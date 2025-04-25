@@ -1,2 +1,9 @@
-# crorecut
-Quick, tiny video editing tool for personal use
+# 🎞️ Crorecut
+
+A tiny minimalistic video editing tool for personal use
+
+### Features
+- Crop
+- Cut
+- Compress
+- Volume level adjustment
