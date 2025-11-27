@@ -2,6 +2,12 @@ use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
+pub mod dir_scanner;
+pub mod metadata;
+
+pub use dir_scanner::scan_videos_directory;
+pub use metadata::VideoMetadata;
+
 #[derive(Debug, Clone)]
 pub enum FrameExtractionError {
     FFmpegNotFound,

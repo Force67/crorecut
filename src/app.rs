@@ -1,38 +1,71 @@
 use iced::{Element, Task};
 use std::path::PathBuf;
 
+use crate::ui::grid::VideoItem;
+use crate::video::VideoMetadata;
+
+#[derive(Debug, Clone)]
+pub enum ScanStatus {
+    NotStarted,
+    Scanning,
+    Complete { count: usize },
+    Error(String),
+}
+
+pub struct GridViewState {
+    pub videos: Vec<VideoItem>,
+    pub scan_status: ScanStatus,
+    pub thumbnail_generation_queue: Vec<PathBuf>,
+    pub thumbnails_in_progress: usize,
+}
+
+const MAX_CONCURRENT_THUMBNAILS: usize = 3;
+
+pub struct PlayerViewState {
+    pub frame_handle: Option<iced::advanced::image::Handle>,
+    pub timestamp: f64,
+    pub video_path: PathBuf,
+    pub duration: f64,
+}
+
+pub enum AppView {
+    Grid(GridViewState),
+    Player(PlayerViewState),
+}
+
 pub struct App {
-    video_state: VideoState,
-    current_video_path: Option<PathBuf>,
-    current_duration: Option<f64>,
-    last_frame_request: Option<std::time::Instant>,
+    current_view: AppView,
+    videos_directory: PathBuf,
 }
 
 impl Default for App {
     fn default() -> Self {
+        let videos_dir = dirs::video_dir().unwrap_or_else(|| PathBuf::from("."));
+
         Self {
-            video_state: VideoState::Idle,
-            current_video_path: None,
-            current_duration: None,
-            last_frame_request: None,
+            current_view: AppView::Grid(GridViewState {
+                videos: Vec::new(),
+                scan_status: ScanStatus::NotStarted,
+                thumbnail_generation_queue: Vec::new(),
+                thumbnails_in_progress: 0,
+            }),
+            videos_directory: videos_dir,
         }
     }
 }
 
-pub enum VideoState {
-    Idle,
-    Loading,
-    Loaded {
-        frame_handle: iced::advanced::image::Handle,
-        timestamp: f64,
-        video_path: PathBuf,
-        duration: f64,
-    },
-    Error(String),
-}
-
 #[derive(Debug, Clone)]
 pub enum Message {
+    // Grid View
+    ScanVideosDirectory,
+    VideosScanned(Result<Vec<VideoMetadata>, String>),
+    GenerateNextThumbnail,
+    ThumbnailGenerated {
+        video_path: PathBuf,
+        result: Result<Vec<u8>, String>,
+    },
+
+    // Player View (existing, for future use)
     LoadFrame,
     FrameExtracted(Result<Vec<u8>, String>),
     DurationReceived(Result<f64, String>),
@@ -41,8 +74,9 @@ pub enum Message {
 
 impl App {
     pub fn new() -> (Self, Task<Message>) {
-        let initial_task = Task::perform(async { Message::LoadFrame }, |msg| msg);
-        (Self::default(), initial_task)
+        let app = Self::default();
+        let initial_task = Task::perform(async { Message::ScanVideosDirectory }, |msg| msg);
+        (app, initial_task)
     }
 
     pub fn title(&self) -> String {
@@ -51,164 +85,168 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::LoadFrame => {
-                let video_path = PathBuf::from(r"test_video.mp4");
-                self.current_video_path = Some(video_path.clone());
-                self.video_state = VideoState::Loading;
+            Message::ScanVideosDirectory => {
+                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                    grid_state.scan_status = ScanStatus::Scanning;
 
-                Task::perform(
-                    async move {
-                        let result = crate::video::get_video_duration_sec(video_path).await;
-                        result.map_err(|e| e.to_string())
-                    },
-                    Message::DurationReceived,
-                )
-            }
-
-            Message::DurationReceived(result) => match result {
-                Ok(duration) => {
-                    self.current_duration = Some(duration);
-
-                    if let Some(video_path) = &self.current_video_path {
-                        let video_path = video_path.clone();
-
-                        Task::perform(
-                            async move {
-                                let result = crate::video::extract_frame(video_path, 0.0).await;
-                                result.map_err(|e| e.to_string())
-                            },
-                            Message::FrameExtracted,
-                        )
-                    } else {
-                        Task::none()
-                    }
+                    let videos_dir = self.videos_directory.clone();
+                    return Task::perform(
+                        async move { crate::video::scan_videos_directory(videos_dir).await },
+                        Message::VideosScanned,
+                    );
                 }
-                Err(error_msg) => {
-                    self.video_state = VideoState::Error(error_msg);
-                    Task::none()
-                }
-            },
-
-            Message::FrameExtracted(result) => {
-                match result {
-                    Ok(frame_bytes) => {
-                        let frame_handle = iced::advanced::image::Handle::from_bytes(frame_bytes);
-
-                        let timestamp =
-                            if let VideoState::Loaded { timestamp, .. } = &self.video_state {
-                                *timestamp
-                            } else {
-                                0.0
-                            };
-
-                        if let (Some(video_path), Some(duration)) =
-                            (&self.current_video_path, self.current_duration)
-                        {
-                            self.video_state = VideoState::Loaded {
-                                frame_handle,
-                                timestamp,
-                                video_path: video_path.clone(),
-                                duration,
-                            };
-                        }
-                    }
-                    Err(error_msg) => {
-                        self.video_state = VideoState::Error(error_msg);
-                    }
-                }
-
                 Task::none()
             }
 
-            Message::SliderChanged(new_timestamp) => {
-                if let VideoState::Loaded {
-                    ref mut timestamp, ..
-                } = self.video_state
-                {
-                    *timestamp = new_timestamp;
-                }
+            Message::VideosScanned(result) => {
+                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                    match result {
+                        Ok(metadata_list) => {
+                            use crate::ui::grid::{ThumbnailState, VideoItem};
 
-                let now = std::time::Instant::now();
+                            let count = metadata_list.len();
 
-                let should_extract = self
-                    .last_frame_request
-                    .map(|last| now.duration_since(last).as_millis() >= 100)
-                    .unwrap_or(true);
+                            grid_state.videos = metadata_list
+                                .into_iter()
+                                .map(|metadata| VideoItem {
+                                    metadata,
+                                    thumbnail_state: ThumbnailState::Pending,
+                                })
+                                .collect();
 
-                if should_extract {
-                    self.last_frame_request = Some(now);
+                            grid_state.thumbnail_generation_queue = grid_state
+                                .videos
+                                .iter()
+                                .map(|v| v.metadata.path.clone())
+                                .collect();
 
-                    if let Some(video_path) = &self.current_video_path {
-                        let video_path = video_path.clone();
+                            grid_state.scan_status = ScanStatus::Complete { count };
 
-                        Task::perform(
-                            async move {
-                                let result =
-                                    crate::video::extract_frame(video_path, new_timestamp).await;
-                                result.map_err(|e| e.to_string())
-                            },
-                            Message::FrameExtracted,
-                        )
-                    } else {
-                        Task::none()
+                            // Start multiple thumbnail generations in parallel
+                            let mut tasks = Vec::new();
+                            for _ in 0..MAX_CONCURRENT_THUMBNAILS {
+                                tasks.push(Task::perform(
+                                    async { Message::GenerateNextThumbnail },
+                                    |msg| msg,
+                                ));
+                            }
+                            return Task::batch(tasks);
+                        }
+                        Err(error_msg) => {
+                            grid_state.scan_status = ScanStatus::Error(error_msg);
+                        }
                     }
-                } else {
-                    Task::none()
                 }
+                Task::none()
             }
+
+            Message::GenerateNextThumbnail => {
+                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                    // Check if we're already at max concurrency
+                    if grid_state.thumbnails_in_progress >= MAX_CONCURRENT_THUMBNAILS {
+                        return Task::none();
+                    }
+
+                    if let Some(video_path) = grid_state.thumbnail_generation_queue.pop() {
+                        use crate::ui::grid::ThumbnailState;
+
+                        if let Some(item) = grid_state
+                            .videos
+                            .iter_mut()
+                            .find(|v| v.metadata.path == video_path)
+                        {
+                            item.thumbnail_state = ThumbnailState::Generating;
+                        }
+
+                        grid_state.thumbnails_in_progress += 1;
+
+                        let path_for_async = video_path.clone();
+                        let path_for_message = video_path;
+                        return Task::perform(
+                            async move {
+                                crate::video::extract_frame(path_for_async, 1.0)
+                                    .await
+                                    .map_err(|e| e.to_string())
+                            },
+                            move |result| Message::ThumbnailGenerated {
+                                video_path: path_for_message.clone(),
+                                result,
+                            },
+                        );
+                    }
+                }
+                Task::none()
+            }
+
+            Message::ThumbnailGenerated { video_path, result } => {
+                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                    use crate::ui::grid::ThumbnailState;
+
+                    if let Some(item) = grid_state
+                        .videos
+                        .iter_mut()
+                        .find(|v| v.metadata.path == video_path)
+                    {
+                        item.thumbnail_state = match result {
+                            Ok(bytes) => ThumbnailState::Ready(
+                                iced::advanced::image::Handle::from_bytes(bytes),
+                            ),
+                            Err(error_msg) => ThumbnailState::Failed(error_msg),
+                        };
+                    }
+
+                    grid_state.thumbnails_in_progress -= 1;
+
+                    // Start the next one if there are more in the queue
+                    if !grid_state.thumbnail_generation_queue.is_empty() {
+                        return Task::perform(async { Message::GenerateNextThumbnail }, |msg| msg);
+                    }
+                }
+                Task::none()
+            }
+
+            // Player view messages (not implemented yet)
+            Message::LoadFrame => Task::none(),
+            Message::FrameExtracted(_) => Task::none(),
+            Message::DurationReceived(_) => Task::none(),
+            Message::SliderChanged(_) => Task::none(),
         }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        use iced::widget::{column, container, slider, text};
-        use iced::{Alignment, Fill};
+        match &self.current_view {
+            AppView::Grid(grid_state) => {
+                use crate::ui::grid::grid_view;
+                use iced::Length;
+                use iced::widget::{column, container, text};
 
-        let content = match &self.video_state {
-            VideoState::Idle => column![
-                text("Welcome to Crorecut").size(24),
-                text("Initializing...").size(14),
-            ]
-            .align_x(Alignment::Center)
-            .spacing(10),
+                match &grid_state.scan_status {
+                    ScanStatus::NotStarted | ScanStatus::Scanning => {
+                        container(text("Scanning videos...").size(20))
+                            .center_x(Length::Fill)
+                            .center_y(Length::Fill)
+                            .into()
+                    }
 
-            VideoState::Loading => {
-                column![text("Extracting frame...").size(20)].align_x(Alignment::Center)
+                    ScanStatus::Complete { .. } => grid_view(&grid_state.videos),
+
+                    ScanStatus::Error(error_msg) => container(
+                        column![
+                            text("Error scanning videos").size(20),
+                            text(error_msg).size(14),
+                        ]
+                        .spacing(10),
+                    )
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .into(),
+                }
             }
 
-            VideoState::Loaded {
-                frame_handle,
-                timestamp,
-                duration,
-                ..
-            } => {
-                let frame_display = iced::widget::image(frame_handle.clone())
-                    .width(Fill)
-                    .height(Fill)
-                    .content_fit(iced::ContentFit::Contain);
-
-                let timeline_slider = slider(0.0..=*duration, *timestamp, Message::SliderChanged)
-                    .width(Fill)
-                    .step(0.1);
-
-                let time_display = text(format!("{:.2}s / {:.2}s", timestamp, duration)).size(14);
-
-                column![frame_display, time_display, timeline_slider,]
-                    .align_x(Alignment::Center)
-                    .spacing(10)
+            AppView::Player(_player_state) => {
+                use iced::widget::text;
+                text("Player view (not implemented yet)").into()
             }
-
-            VideoState::Error(error_msg) => column![
-                text("Error").size(24).color([1.0, 0.0, 0.0]),
-                text(error_msg).size(14),
-                text("Please check:").size(12),
-                text("1. FFmpeg is installed and in PATH").size(12),
-                text("2. Video file exists at specified path").size(12),
-                text("3. Video file is a valid format").size(12),
-            ]
-            .align_x(Alignment::Center)
-            .spacing(10),
-        };
-
-        container(content).center_x(Fill).center_y(Fill).into()
+        }
     }
 }
