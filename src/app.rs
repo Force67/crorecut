@@ -12,6 +12,7 @@ pub enum ScanStatus {
     Error(String),
 }
 
+#[derive(Debug, Clone)]
 pub struct GridViewState {
     pub videos: Vec<VideoItem>,
     pub scan_status: ScanStatus,
@@ -21,6 +22,7 @@ pub struct GridViewState {
 
 const MAX_CONCURRENT_THUMBNAILS: usize = 3;
 
+#[derive(Debug, Clone)]
 pub struct PlayerViewState {
     pub frame_handle: Option<iced::advanced::image::Handle>,
     pub timestamp: f64,
@@ -28,13 +30,16 @@ pub struct PlayerViewState {
     pub duration: f64,
 }
 
-pub enum AppView {
-    Grid(GridViewState),
-    Player(PlayerViewState),
+#[derive(Debug, Clone)]
+pub enum Screen {
+    Home(GridViewState),
+    Editor(PlayerViewState),
+    Settings,
+    About,
 }
 
 pub struct App {
-    current_view: AppView,
+    current_screen: Screen,
     videos_directory: PathBuf,
 }
 
@@ -43,7 +48,7 @@ impl Default for App {
         let videos_dir = dirs::video_dir().unwrap_or_else(|| PathBuf::from("."));
 
         Self {
-            current_view: AppView::Grid(GridViewState {
+            current_screen: Screen::Home(GridViewState {
                 videos: Vec::new(),
                 scan_status: ScanStatus::NotStarted,
                 thumbnail_generation_queue: Vec::new(),
@@ -56,6 +61,9 @@ impl Default for App {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    // Navigation
+    NavigateTo(Screen),
+
     // Grid View
     ScanVideosDirectory,
     VideosScanned(Result<Vec<VideoMetadata>, String>),
@@ -64,6 +72,7 @@ pub enum Message {
         video_path: PathBuf,
         result: Result<Vec<u8>, String>,
     },
+    VideoSelected(PathBuf),
 
     // Player View (existing, for future use)
     LoadFrame,
@@ -85,8 +94,13 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::NavigateTo(screen) => {
+                self.current_screen = screen;
+                Task::none()
+            }
+
             Message::ScanVideosDirectory => {
-                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                if let Screen::Home(ref mut grid_state) = self.current_screen {
                     grid_state.scan_status = ScanStatus::Scanning;
 
                     let videos_dir = self.videos_directory.clone();
@@ -99,7 +113,7 @@ impl App {
             }
 
             Message::VideosScanned(result) => {
-                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                if let Screen::Home(ref mut grid_state) = self.current_screen {
                     match result {
                         Ok(metadata_list) => {
                             use crate::ui::grid::{ThumbnailState, VideoItem};
@@ -141,7 +155,7 @@ impl App {
             }
 
             Message::GenerateNextThumbnail => {
-                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                if let Screen::Home(ref mut grid_state) = self.current_screen {
                     // Check if we're already at max concurrency
                     if grid_state.thumbnails_in_progress >= MAX_CONCURRENT_THUMBNAILS {
                         return Task::none();
@@ -179,7 +193,7 @@ impl App {
             }
 
             Message::ThumbnailGenerated { video_path, result } => {
-                if let AppView::Grid(ref mut grid_state) = self.current_view {
+                if let Screen::Home(ref mut grid_state) = self.current_screen {
                     use crate::ui::grid::ThumbnailState;
 
                     if let Some(item) = grid_state
@@ -205,6 +219,39 @@ impl App {
                 Task::none()
             }
 
+            Message::VideoSelected(video_path) => {
+                // Create the editor screen state
+                let editor_screen = Screen::Editor(PlayerViewState {
+                    frame_handle: None,
+                    timestamp: 0.0,
+                    video_path: video_path.clone(),
+                    duration: 0.0,
+                });
+
+                // Get video duration and load initial frame
+                let path_for_duration = video_path.clone();
+                let path_for_frame = video_path;
+
+                Task::batch(vec![
+                    Task::perform(
+                        async move { editor_screen },
+                        Message::NavigateTo,
+                    ),
+                    Task::perform(
+                        async move { crate::video::get_video_duration_sec(path_for_duration).await },
+                        |result| Message::DurationReceived(result.map_err(|e| e.to_string())),
+                    ),
+                    Task::perform(
+                        async move {
+                            crate::video::extract_frame(path_for_frame, 0.0)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        Message::FrameExtracted,
+                    ),
+                ])
+            }
+
             // Player view messages (not implemented yet)
             Message::LoadFrame => Task::none(),
             Message::FrameExtracted(_) => Task::none(),
@@ -214,39 +261,66 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        match &self.current_view {
-            AppView::Grid(grid_state) => {
-                use crate::ui::grid::grid_view;
-                use iced::Length;
-                use iced::widget::{column, container, text};
+        match &self.current_screen {
+            Screen::Home(grid_state) => self.home_view(grid_state),
+            Screen::Editor(player_state) => self.editor_view(player_state),
+            Screen::Settings => self.settings_view(),
+            Screen::About => self.about_view(),
+        }
+    }
 
-                match &grid_state.scan_status {
-                    ScanStatus::NotStarted | ScanStatus::Scanning => {
-                        container(text("Scanning videos...").size(20))
-                            .center_x(Length::Fill)
-                            .center_y(Length::Fill)
-                            .into()
-                    }
+    fn home_view<'a>(&self, grid_state: &'a GridViewState) -> Element<'a, Message> {
+        use crate::ui::grid::grid_view;
+        use iced::Length;
+        use iced::widget::{column, container, text};
 
-                    ScanStatus::Complete { .. } => grid_view(&grid_state.videos),
-
-                    ScanStatus::Error(error_msg) => container(
-                        column![
-                            text("Error scanning videos").size(20),
-                            text(error_msg).size(14),
-                        ]
-                        .spacing(10),
-                    )
+        match &grid_state.scan_status {
+            ScanStatus::NotStarted | ScanStatus::Scanning => {
+                container(text("Scanning videos...").size(20))
                     .center_x(Length::Fill)
                     .center_y(Length::Fill)
-                    .into(),
-                }
+                    .into()
             }
 
-            AppView::Player(_player_state) => {
-                use iced::widget::text;
-                text("Player view (not implemented yet)").into()
-            }
+            ScanStatus::Complete { .. } => grid_view(&grid_state.videos),
+
+            ScanStatus::Error(error_msg) => container(
+                column![
+                    text("Error scanning videos").size(20),
+                    text(error_msg).size(14),
+                ]
+                .spacing(10),
+            )
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into(),
         }
+    }
+
+    fn editor_view<'a>(&self, _player_state: &'a PlayerViewState) -> Element<'a, Message> {
+        use iced::widget::text;
+        text("Editor view (not implemented yet)").into()
+    }
+
+    fn settings_view(&self) -> Element<'_, Message> {
+        use iced::widget::text;
+        use iced::Length;
+        use iced::widget::container;
+
+        container(text("Settings").size(20))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
+    }
+
+    fn about_view(&self) -> Element<'_, Message> {
+        use iced::widget::text;
+        use iced::Length;
+        use iced::widget::container;
+
+        container(text("About").size(20))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into()
     }
 }

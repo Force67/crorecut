@@ -1,7 +1,7 @@
 use crate::app::Message;
 use crate::video::VideoMetadata;
-use iced::widget::{column, container, image, row, scrollable, text};
-use iced::{Alignment, Element, Length};
+use iced::widget::{button, column, container, image, row, scrollable, text};
+use iced::{Alignment, Border, Element, Length};
 
 #[derive(Debug, Clone)]
 pub enum ThumbnailState {
@@ -72,9 +72,40 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .size(12)
         .color(iced::Color::from_rgb(0.6, 0.6, 0.6));
 
-    column![thumbnail_content, filename_label, dir_label]
+    let content = column![thumbnail_content, filename_label, dir_label]
         .spacing(8)
+        .width(Length::Fill);
+
+    let video_path = video.metadata.path.clone();
+
+    // Wrap in button for click handling and hover effects
+    button(content)
+        .on_press(Message::VideoSelected(video_path))
         .width(Length::Fill)
+        .padding(8)
+        .style(|_theme, status| {
+            let base_color = iced::Color::from_rgb(0.15, 0.15, 0.15);
+            let hover_color = iced::Color::from_rgb(0.25, 0.25, 0.3);
+            let pressed_color = iced::Color::from_rgb(0.2, 0.2, 0.25);
+
+            button::Style {
+                background: Some(iced::Background::Color(match status {
+                    button::Status::Hovered => hover_color,
+                    button::Status::Pressed => pressed_color,
+                    _ => base_color,
+                })),
+                border: Border {
+                    color: match status {
+                        button::Status::Hovered => iced::Color::from_rgb(0.4, 0.5, 0.7),
+                        button::Status::Pressed => iced::Color::from_rgb(0.3, 0.4, 0.6),
+                        _ => iced::Color::from_rgb(0.2, 0.2, 0.2),
+                    },
+                    width: 2.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }
+        })
         .into()
 }
 
