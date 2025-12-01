@@ -9,10 +9,7 @@ pub async fn extract_frame(
     video_path: PathBuf,
     timestamp_seconds: f64,
 ) -> Result<Vec<u8>, FrameExtractionError> {
-    if !tokio::fs::try_exists(&video_path)
-        .await
-        .unwrap_or(false)
-    {
+    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
         return Err(FrameExtractionError::VideoNotFound(video_path));
     }
 
@@ -76,10 +73,7 @@ pub async fn extract_frame(
 }
 
 pub async fn get_video_duration_sec(video_path: PathBuf) -> Result<f64, FrameExtractionError> {
-    if !tokio::fs::try_exists(&video_path)
-        .await
-        .unwrap_or(false)
-    {
+    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
         return Err(FrameExtractionError::VideoNotFound(video_path));
     }
 

@@ -234,10 +234,7 @@ impl App {
                 let path_for_frame = video_path;
 
                 Task::batch(vec![
-                    Task::perform(
-                        async move { editor_screen },
-                        Message::NavigateTo,
-                    ),
+                    Task::perform(async move { editor_screen }, Message::NavigateTo),
                     Task::perform(
                         async move { crate::video::get_video_duration_sec(path_for_duration).await },
                         |result| Message::DurationReceived(result.map_err(|e| e.to_string())),
@@ -304,9 +301,9 @@ impl App {
     }
 
     fn settings_view(&self) -> Element<'_, Message> {
-        use iced::widget::text;
         use iced::Length;
         use iced::widget::container;
+        use iced::widget::text;
 
         container(text("Settings").size(20))
             .center_x(Length::Fill)
@@ -315,9 +312,9 @@ impl App {
     }
 
     fn about_view(&self) -> Element<'_, Message> {
-        use iced::widget::text;
         use iced::Length;
         use iced::widget::container;
+        use iced::widget::text;
 
         container(text("About").size(20))
             .center_x(Length::Fill)
