@@ -1,9 +1,10 @@
 # 🎞️ Crorecut
 
-A tiny minimalistic video editing tool for personal use
+A portable, tiny, minimalistic video editing tool for personal use, and an FFmpeg wrapper! 🎬
 
 ### Features
 - Crop
+- Resize
 - Cut
 - Compress
-- Volume level adjustment
+- Adjust volume levels or mute
