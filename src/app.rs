@@ -132,6 +132,7 @@ impl App {
                                 .videos
                                 .iter()
                                 .map(|v| v.metadata.path.clone())
+                                .rev()
                                 .collect();
 
                             grid_state.scan_status = ScanStatus::Complete { count };
