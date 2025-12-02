@@ -2,7 +2,14 @@ use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
+#[cfg(windows)]
+#[allow(unused_imports)] // Trait must be in scope for .creation_flags() method
+use std::os::windows::process::CommandExt;
+
 use super::error::FrameExtractionError;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// Extract a single frame from a video at the specified timestamp. Returns PNG-encoded frame bytes
 pub async fn extract_frame(
@@ -20,7 +27,8 @@ pub async fn extract_frame(
     let timestamp_str = format!("{:02}:{:02}:{:06.3}", hours, minutes, seconds);
 
     // -ss before -i enables faster keyframe seeking
-    let mut child = Command::new("ffmpeg")
+    let mut command = Command::new("ffmpeg");
+    command
         .arg("-ss")
         .arg(&timestamp_str)
         .arg("-i")
@@ -35,7 +43,12 @@ pub async fn extract_frame(
         .arg("png")
         .arg("-")
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = command
         .spawn()
         .map_err(|_| FrameExtractionError::FFmpegNotFound)?;
 
@@ -77,14 +90,20 @@ pub async fn get_video_duration_sec(video_path: PathBuf) -> Result<f64, FrameExt
         return Err(FrameExtractionError::VideoNotFound(video_path));
     }
 
-    let output = Command::new("ffprobe")
+    let mut command = Command::new("ffprobe");
+    command
         .arg("-v")
         .arg("error")
         .arg("-show_entries")
         .arg("format=duration")
         .arg("-of")
         .arg("default=noprint_wrappers=1:nokey=1")
-        .arg(&video_path)
+        .arg(&video_path);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let output = command
         .output()
         .await
         .map_err(|_| FrameExtractionError::FFmpegNotFound)?;
