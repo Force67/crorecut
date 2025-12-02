@@ -1,6 +1,6 @@
 use crate::app::Message;
 use crate::video::VideoMetadata;
-use iced::widget::{button, column, container, image, row, scrollable, text};
+use iced::widget::{button, column, container, grid, image, scrollable, text};
 use iced::{Alignment, Border, Element, Length};
 
 #[derive(Debug, Clone)]
@@ -21,9 +21,9 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
     let thumbnail_content = match &video.thumbnail_state {
         ThumbnailState::Pending => container(text("...").size(40))
             .center_x(Length::Fill)
-            .center_y(Length::Fixed(180.0))
+            .center_y(Length::Fill)
             .width(Length::Fill)
-            .height(Length::Fixed(180.0))
+            .height(Length::Fill)
             .style(|_theme| container::Style {
                 background: Some(iced::Background::Color(iced::Color::from_rgb(
                     0.2, 0.2, 0.2,
@@ -33,9 +33,9 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
 
         ThumbnailState::Generating => container(text("...").size(40))
             .center_x(Length::Fill)
-            .center_y(Length::Fixed(180.0))
+            .center_y(Length::Fill)
             .width(Length::Fill)
-            .height(Length::Fixed(180.0))
+            .height(Length::Fill)
             .style(|_theme| container::Style {
                 background: Some(iced::Background::Color(iced::Color::from_rgb(
                     0.25, 0.25, 0.25,
@@ -46,17 +46,17 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         ThumbnailState::Ready(handle) => container(
             image(handle.clone())
                 .width(Length::Fill)
-                .height(Length::Fixed(180.0))
+                .height(Length::Fill)
                 .content_fit(iced::ContentFit::Cover),
         )
         .width(Length::Fill)
-        .height(Length::Fixed(180.0)),
+        .height(Length::Fill),
 
         ThumbnailState::Failed(_) => container(text("X").size(40))
             .center_x(Length::Fill)
-            .center_y(Length::Fixed(180.0))
+            .center_y(Length::Fill)
             .width(Length::Fill)
-            .height(Length::Fixed(180.0))
+            .height(Length::Fill)
             .style(|_theme| container::Style {
                 background: Some(iced::Background::Color(iced::Color::from_rgb(
                     0.3, 0.1, 0.1,
@@ -73,8 +73,9 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .color(iced::Color::from_rgb(0.6, 0.6, 0.6));
 
     let content = column![thumbnail_content, filename_label, dir_label]
-        .spacing(8)
-        .width(Length::Fill);
+        .spacing(4)
+        .width(Length::Fill)
+        .height(Length::Fill);
 
     let video_path = video.metadata.path.clone();
 
@@ -82,6 +83,7 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
     button(content)
         .on_press(Message::VideoSelected(video_path))
         .width(Length::Fill)
+        .height(Length::Fill)
         .padding(8)
         .style(|_theme, status| {
             let base_color = iced::Color::from_rgb(0.15, 0.15, 0.15);
@@ -124,30 +126,10 @@ pub fn grid_view(videos: &[VideoItem]) -> Element<'_, Message> {
         .into();
     }
 
-    let rows_content: Vec<Element<_>> = videos
-        .chunks(3)
-        .map(|chunk| {
-            let row_items: Vec<Element<_>> = chunk
-                .iter()
-                .map(|video| {
-                    container(video_grid_item(video))
-                        .width(Length::FillPortion(1))
-                        .into()
-                })
-                .chain(std::iter::repeat_with(|| {
-                    container("").width(Length::FillPortion(1)).into()
-                }))
-                .take(3)
-                .collect();
+    let video_grid = grid::Grid::with_children(videos.iter().map(video_grid_item))
+        .columns(3)
+        .spacing(12)
+        .height(grid::Sizing::AspectRatio(1.35)); // Slightly taller than 16:9 to fit text
 
-            row(row_items).spacing(20).width(Length::Fill).into()
-        })
-        .collect();
-
-    let grid_column = column(rows_content)
-        .spacing(20)
-        .padding(20)
-        .width(Length::Fill);
-
-    scrollable(grid_column).into()
+    scrollable(container(video_grid).padding(20).width(Length::Fill)).into()
 }

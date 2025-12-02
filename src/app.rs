@@ -212,9 +212,9 @@ impl App {
                     .find(|v| v.metadata.path == video_path)
                 {
                     item.thumbnail_state = match result {
-                        Ok(bytes) => ThumbnailState::Ready(
-                            iced::advanced::image::Handle::from_bytes(bytes),
-                        ),
+                        Ok(bytes) => {
+                            ThumbnailState::Ready(iced::advanced::image::Handle::from_bytes(bytes))
+                        }
                         Err(error_msg) => ThumbnailState::Failed(error_msg),
                     };
                 }
@@ -260,7 +260,7 @@ impl App {
                                 .map_err(|e| e.to_string())
                         },
                         |result| Message::FrameExtracted {
-                            request_id: 0,  // Initial load uses ID 0
+                            request_id: 0, // Initial load uses ID 0
                             result,
                         },
                     ),
@@ -296,9 +296,8 @@ impl App {
 
                     match result {
                         Ok(frame_bytes) => {
-                            player_state.frame_handle = Some(
-                                iced::advanced::image::Handle::from_bytes(frame_bytes)
-                            );
+                            player_state.frame_handle =
+                                Some(iced::advanced::image::Handle::from_bytes(frame_bytes));
                         }
                         Err(error_msg) => {
                             log::error!("Frame extraction failed: {}", error_msg);
@@ -341,7 +340,8 @@ impl App {
                         let remaining_ms = 100 - elapsed.as_millis() as u64;
                         return Task::perform(
                             async move {
-                                tokio::time::sleep(std::time::Duration::from_millis(remaining_ms)).await;
+                                tokio::time::sleep(std::time::Duration::from_millis(remaining_ms))
+                                    .await;
                                 Message::ExtractPendingFrame
                             },
                             |msg| msg,
