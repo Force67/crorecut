@@ -2,6 +2,7 @@ use iced::{Element, Task};
 use std::path::PathBuf;
 
 use crate::ui::grid::VideoItem;
+use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
 use crate::video::VideoMetadata;
 
 #[derive(Debug, Clone)]
@@ -22,6 +23,31 @@ pub struct GridViewState {
 
 const MAX_CONCURRENT_THUMBNAILS: usize = 3;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ResizeHandle {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelectionState {
+    Idle,
+    Creating {
+        start_x: f32,
+        start_y: f32,
+    },
+    Moving {
+        offset_x: f32,
+        offset_y: f32,
+    },
+    Resizing {
+        handle: ResizeHandle,
+        original: CropSelection,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct PlayerViewState {
     pub frame_handle: Option<iced::advanced::image::Handle>,
@@ -33,6 +59,11 @@ pub struct PlayerViewState {
     pub last_extraction_time: std::time::Instant,
     pub last_extraction_request_id: u64,
     pub pending_timestamp: Option<f64>,
+
+    // Crop selection state
+    pub crop_selection: Option<CropSelection>,
+    pub selection_state: SelectionState,
+    pub mouse_position: (f32, f32),
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +123,14 @@ pub enum Message {
     DurationReceived(Result<f64, String>),
     SliderChanged(f64),
     ExtractPendingFrame,
+
+    // Crop selection
+    CropMousePressed,
+    CropMouseMoved {
+        x: f32,
+        y: f32,
+    },
+    CropMouseReleased,
 }
 
 impl App {
@@ -239,6 +278,9 @@ impl App {
                     last_extraction_time: std::time::Instant::now(),
                     last_extraction_request_id: 0,
                     pending_timestamp: None,
+                    crop_selection: None,
+                    selection_state: SelectionState::Idle,
+                    mouse_position: (0.0, 0.0),
                 });
 
                 // Switch to editor screen
@@ -400,6 +442,162 @@ impl App {
                 }
                 Task::none()
             }
+
+            // Crop selection handlers
+            Message::CropMousePressed => {
+                if let Some(ref mut player_state) = self.player_state {
+                    let (x, y) = player_state.mouse_position;
+
+                    // Check if clicking on an existing selection
+                    if let Some(selection) = player_state.crop_selection {
+                        // Check if clicking on a resize handle
+                        if let Some(handle) = Self::get_resize_handle(x, y, &selection) {
+                            player_state.selection_state = SelectionState::Resizing {
+                                handle,
+                                original: selection,
+                            };
+                        }
+                        // Check if clicking inside selection (for moving)
+                        else if Self::point_in_selection(x, y, &selection) {
+                            player_state.selection_state = SelectionState::Moving {
+                                offset_x: x - selection.x,
+                                offset_y: y - selection.y,
+                            };
+                        }
+                        // Clicking outside - start new selection
+                        else {
+                            player_state.crop_selection = None;
+                            player_state.selection_state = SelectionState::Creating {
+                                start_x: x,
+                                start_y: y,
+                            };
+                        }
+                    } else {
+                        // No existing selection - start creating new one
+                        player_state.selection_state = SelectionState::Creating {
+                            start_x: x,
+                            start_y: y,
+                        };
+                    }
+                }
+                Task::none()
+            }
+
+            Message::CropMouseMoved { x, y } => {
+                if let Some(ref mut player_state) = self.player_state {
+                    // Update mouse position
+                    player_state.mouse_position = (x, y);
+
+                    match player_state.selection_state {
+                        SelectionState::Creating { start_x, start_y } => {
+                            // Update selection rectangle
+                            let min_x = start_x.min(x);
+                            let min_y = start_y.min(y);
+                            let max_x = start_x.max(x);
+                            let max_y = start_y.max(y);
+
+                            player_state.crop_selection = Some(CropSelection {
+                                x: min_x,
+                                y: min_y,
+                                width: max_x - min_x,
+                                height: max_y - min_y,
+                            });
+                        }
+                        SelectionState::Moving { offset_x, offset_y } => {
+                            if let Some(ref mut selection) = player_state.crop_selection {
+                                selection.x = x - offset_x;
+                                selection.y = y - offset_y;
+                            }
+                        }
+                        SelectionState::Resizing { handle, original } => {
+                            if let Some(ref mut selection) = player_state.crop_selection {
+                                Self::resize_selection(selection, handle, x, y, &original);
+                            }
+                        }
+                        SelectionState::Idle => {}
+                    }
+                }
+                Task::none()
+            }
+
+            Message::CropMouseReleased => {
+                if let Some(ref mut player_state) = self.player_state {
+                    player_state.selection_state = SelectionState::Idle;
+                }
+                Task::none()
+            }
+        }
+    }
+
+    // Helper methods for crop selection
+    fn get_resize_handle(x: f32, y: f32, selection: &CropSelection) -> Option<ResizeHandle> {
+        const HANDLE_SIZE: f32 = 10.0;
+
+        let left = selection.x;
+        let right = selection.x + selection.width;
+        let top = selection.y;
+        let bottom = selection.y + selection.height;
+
+        // Check corner handles
+        if (x - left).abs() < HANDLE_SIZE && (y - top).abs() < HANDLE_SIZE {
+            return Some(ResizeHandle::TopLeft);
+        }
+        if (x - right).abs() < HANDLE_SIZE && (y - top).abs() < HANDLE_SIZE {
+            return Some(ResizeHandle::TopRight);
+        }
+        if (x - left).abs() < HANDLE_SIZE && (y - bottom).abs() < HANDLE_SIZE {
+            return Some(ResizeHandle::BottomLeft);
+        }
+        if (x - right).abs() < HANDLE_SIZE && (y - bottom).abs() < HANDLE_SIZE {
+            return Some(ResizeHandle::BottomRight);
+        }
+
+        None
+    }
+
+    fn point_in_selection(x: f32, y: f32, selection: &CropSelection) -> bool {
+        x >= selection.x
+            && x <= selection.x + selection.width
+            && y >= selection.y
+            && y <= selection.y + selection.height
+    }
+
+    fn resize_selection(
+        selection: &mut CropSelection,
+        handle: ResizeHandle,
+        x: f32,
+        y: f32,
+        original: &CropSelection,
+    ) {
+        match handle {
+            ResizeHandle::TopLeft => {
+                selection.x = x;
+                selection.y = y;
+                selection.width = (original.x + original.width) - x;
+                selection.height = (original.y + original.height) - y;
+            }
+            ResizeHandle::TopRight => {
+                selection.y = y;
+                selection.width = x - original.x;
+                selection.height = (original.y + original.height) - y;
+            }
+            ResizeHandle::BottomLeft => {
+                selection.x = x;
+                selection.width = (original.x + original.width) - x;
+                selection.height = y - original.y;
+            }
+            ResizeHandle::BottomRight => {
+                selection.width = x - original.x;
+                selection.height = y - original.y;
+            }
+        }
+
+        // Ensure minimum size and prevent negative dimensions
+        if selection.width < 10.0 {
+            selection.width = 10.0;
+        }
+        if selection.height < 10.0 {
+            selection.height = 10.0;
         }
     }
 
@@ -448,7 +646,9 @@ impl App {
     }
 
     fn editor_view<'a>(&self, player_state: &'a PlayerViewState) -> Element<'a, Message> {
-        use iced::widget::{button, column, container, image, row, slider, text};
+        use iced::widget::{
+            button, canvas, column, container, image, mouse_area, row, slider, stack, text,
+        };
         use iced::{Alignment, Length};
 
         // Helper function to format timestamps as HH:MM:SS
@@ -477,20 +677,40 @@ impl App {
 
         // Frame display area
         let frame_display = if let Some(ref handle) = player_state.frame_handle {
-            container(
-                image(handle.clone())
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .content_fit(iced::ContentFit::Contain),
-            )
-            .width(Length::Fill)
-            .height(Length::FillPortion(4))
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .style(|_theme| container::Style {
-                background: Some(iced::Background::Color(iced::Color::BLACK)),
-                ..Default::default()
+            let image_widget = image(handle.clone())
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .content_fit(iced::ContentFit::Contain);
+
+            // Create canvas for selection overlay
+            let selection_canvas = canvas(SelectionCanvas {
+                selection: player_state.crop_selection,
             })
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+            // Stack image and overlay
+            let content = stack![image_widget, selection_canvas];
+
+            // Wrap in mouse area for interaction
+            let interactive_content = mouse_area(content)
+                .on_press(Message::CropMousePressed)
+                .on_move(|point: iced::Point| Message::CropMouseMoved {
+                    x: point.x,
+                    y: point.y,
+                })
+                .on_release(Message::CropMouseReleased)
+                .interaction(iced::mouse::Interaction::Crosshair);
+
+            container(interactive_content)
+                .width(Length::Fill)
+                .height(Length::FillPortion(4))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(|_theme| container::Style {
+                    background: Some(iced::Background::Color(iced::Color::BLACK)),
+                    ..Default::default()
+                })
         } else {
             // Placeholder while loading
             container(
