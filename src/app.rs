@@ -269,46 +269,7 @@ impl App {
                 }
             }
 
-            Message::VideoSelected(video_path) => {
-                // Initialize player state
-                self.player_state = Some(PlayerViewState {
-                    frame_handle: None,
-                    timestamp: 0.0,
-                    video_path: video_path.clone(),
-                    duration: 0.0,
-                    last_extraction_time: std::time::Instant::now(),
-                    last_extraction_request_id: 0,
-                    pending_timestamp: None,
-                    crop_selection: None,
-                    selection_state: SelectionState::Idle,
-                    mouse_position: (0.0, 0.0),
-                });
-
-                // Switch to editor screen
-                self.current_screen = Screen::Editor;
-
-                // Get video duration and load initial frame
-                let path_for_duration = video_path.clone();
-                let path_for_frame = video_path;
-
-                Task::batch(vec![
-                    Task::perform(
-                        async move { crate::video::get_video_duration_sec(path_for_duration).await },
-                        |result| Message::DurationReceived(result.map_err(|e| e.to_string())),
-                    ),
-                    Task::perform(
-                        async move {
-                            crate::video::extract_frame(path_for_frame, 0.0)
-                                .await
-                                .map_err(|e| e.to_string())
-                        },
-                        |result| Message::FrameExtracted {
-                            request_id: 0, // Initial load uses ID 0
-                            result,
-                        },
-                    ),
-                ])
-            }
+            Message::VideoSelected(video_path) => self.handle_video_selected(video_path),
 
             // Player view messages
             Message::DurationReceived(result) => {
@@ -351,77 +312,9 @@ impl App {
                 Task::none()
             }
 
-            Message::SliderChanged(new_timestamp) => {
-                if let Some(ref mut player_state) = self.player_state {
-                    // Update timestamp immediately for responsive UI
-                    player_state.timestamp = new_timestamp;
+            Message::SliderChanged(new_timestamp) => self.handle_slider_changed(new_timestamp),
 
-                    let elapsed = player_state.last_extraction_time.elapsed();
-
-                    if elapsed >= std::time::Duration::from_millis(100) {
-                        // Throttle window passed - spawn extraction
-                        player_state.last_extraction_request_id += 1;
-                        player_state.last_extraction_time = std::time::Instant::now();
-                        player_state.pending_timestamp = None;
-
-                        let video_path = player_state.video_path.clone();
-                        let request_id = player_state.last_extraction_request_id;
-
-                        return Task::perform(
-                            async move {
-                                crate::video::extract_frame(video_path, new_timestamp)
-                                    .await
-                                    .map_err(|e| e.to_string())
-                            },
-                            move |result| Message::FrameExtracted { request_id, result },
-                        );
-                    } else {
-                        // Within throttle window - store as pending
-                        player_state.pending_timestamp = Some(new_timestamp);
-
-                        // Schedule extraction after remaining throttle time
-                        let remaining_ms = 100 - elapsed.as_millis() as u64;
-                        return Task::perform(
-                            async move {
-                                tokio::time::sleep(std::time::Duration::from_millis(remaining_ms))
-                                    .await;
-                                Message::ExtractPendingFrame
-                            },
-                            |msg| msg,
-                        );
-                    }
-                }
-                Task::none()
-            }
-
-            Message::ExtractPendingFrame => {
-                if let Some(ref mut player_state) = self.player_state {
-                    // Check if there's still a pending timestamp to extract
-                    if let Some(pending_ts) = player_state.pending_timestamp {
-                        let elapsed = player_state.last_extraction_time.elapsed();
-
-                        // Verify throttle window passed (defensive against overlapping schedules)
-                        if elapsed >= std::time::Duration::from_millis(100) {
-                            player_state.last_extraction_request_id += 1;
-                            player_state.last_extraction_time = std::time::Instant::now();
-                            player_state.pending_timestamp = None;
-
-                            let video_path = player_state.video_path.clone();
-                            let request_id = player_state.last_extraction_request_id;
-
-                            return Task::perform(
-                                async move {
-                                    crate::video::extract_frame(video_path, pending_ts)
-                                        .await
-                                        .map_err(|e| e.to_string())
-                                },
-                                move |result| Message::FrameExtracted { request_id, result },
-                            );
-                        }
-                    }
-                }
-                Task::none()
-            }
+            Message::ExtractPendingFrame => self.handle_extract_pending_frame(),
 
             Message::LoadFrame => {
                 if let Some(ref mut player_state) = self.player_state {
@@ -528,6 +421,121 @@ impl App {
                 Task::none()
             }
         }
+    }
+
+    /// Handle video selection - initialize player state and load video
+    fn handle_video_selected(&mut self, video_path: PathBuf) -> Task<Message> {
+        // Initialize player state
+        self.player_state = Some(PlayerViewState {
+            frame_handle: None,
+            timestamp: 0.0,
+            video_path: video_path.clone(),
+            duration: 0.0,
+            last_extraction_time: std::time::Instant::now(),
+            last_extraction_request_id: 0,
+            pending_timestamp: None,
+            crop_selection: None,
+            selection_state: SelectionState::Idle,
+            mouse_position: (0.0, 0.0),
+        });
+
+        // Switch to editor screen
+        self.current_screen = Screen::Editor;
+
+        // Get video duration and load initial frame
+        let path_for_duration = video_path.clone();
+        let path_for_frame = video_path;
+
+        Task::batch(vec![
+            Task::perform(
+                async move { crate::video::get_video_duration_sec(path_for_duration).await },
+                |result| Message::DurationReceived(result.map_err(|e| e.to_string())),
+            ),
+            Task::perform(
+                async move {
+                    crate::video::extract_frame(path_for_frame, 0.0)
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                |result| Message::FrameExtracted {
+                    request_id: 0, // Initial load uses ID 0
+                    result,
+                },
+            ),
+        ])
+    }
+
+    /// Handle slider changes with throttling to avoid excessive frame extractions
+    fn handle_slider_changed(&mut self, new_timestamp: f64) -> Task<Message> {
+        if let Some(ref mut player_state) = self.player_state {
+            // Update timestamp immediately for responsive UI
+            player_state.timestamp = new_timestamp;
+
+            let elapsed = player_state.last_extraction_time.elapsed();
+
+            if elapsed >= std::time::Duration::from_millis(100) {
+                // Throttle window passed - spawn extraction
+                player_state.last_extraction_request_id += 1;
+                player_state.last_extraction_time = std::time::Instant::now();
+                player_state.pending_timestamp = None;
+
+                let video_path = player_state.video_path.clone();
+                let request_id = player_state.last_extraction_request_id;
+
+                return Task::perform(
+                    async move {
+                        crate::video::extract_frame(video_path, new_timestamp)
+                            .await
+                            .map_err(|e| e.to_string())
+                    },
+                    move |result| Message::FrameExtracted { request_id, result },
+                );
+            } else {
+                // Within throttle window - store as pending
+                player_state.pending_timestamp = Some(new_timestamp);
+
+                // Schedule extraction after remaining throttle time
+                let remaining_ms = 100 - elapsed.as_millis() as u64;
+                return Task::perform(
+                    async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(remaining_ms)).await;
+                        Message::ExtractPendingFrame
+                    },
+                    |msg| msg,
+                );
+            }
+        }
+        Task::none()
+    }
+
+    /// Extract a pending frame after throttle delay
+    fn handle_extract_pending_frame(&mut self) -> Task<Message> {
+        if let Some(ref mut player_state) = self.player_state {
+            // Check if there's still a pending timestamp to extract
+            if let Some(pending_ts) = player_state.pending_timestamp {
+                let elapsed = player_state.last_extraction_time.elapsed();
+
+                // Verify throttle window passed (defensive against overlapping schedules)
+                if elapsed >= std::time::Duration::from_millis(100) {
+                    player_state.last_extraction_request_id += 1;
+                    player_state.last_extraction_time = std::time::Instant::now();
+                    player_state.pending_timestamp = None;
+
+                    let video_path = player_state.video_path.clone();
+                    let request_id = player_state.last_extraction_request_id;
+
+                    return Task::perform(
+                        async move {
+                            crate::video::extract_frame(video_path, pending_ts)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        move |result| Message::FrameExtracted { request_id, result },
+                    );
+                }
+            }
+        }
+        Task::none()
     }
 
     pub fn view(&self) -> Element<'_, Message> {
