@@ -65,6 +65,10 @@ pub struct PlayerViewState {
     pub crop_selection: Option<CropSelection>,
     pub selection_state: SelectionState,
     pub mouse_position: (f32, f32),
+
+    // Trim state
+    pub trim_start: f64,
+    pub trim_end: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +136,13 @@ pub enum Message {
         y: f32,
     },
     CropMouseReleased,
+
+    // Trim selection
+    TrimStartChanged(f64),
+    TrimEndChanged(f64),
+
+    // Command display
+    CopyCommand(String),
 }
 
 impl App {
@@ -277,6 +288,8 @@ impl App {
                     match result {
                         Ok(duration) => {
                             player_state.duration = duration;
+                            // Initialize trim_end to full duration
+                            player_state.trim_end = duration;
                         }
                         Err(error_msg) => {
                             log::error!("Failed to load video duration: {}", error_msg);
@@ -420,6 +433,26 @@ impl App {
                 }
                 Task::none()
             }
+
+            Message::TrimStartChanged(value) => {
+                if let Some(ref mut player_state) = self.player_state {
+                    // Clamp to not exceed trim_end (keep at least 0.1s gap)
+                    player_state.trim_start = value.min(player_state.trim_end - 0.1).max(0.0);
+                }
+                Task::none()
+            }
+
+            Message::TrimEndChanged(value) => {
+                if let Some(ref mut player_state) = self.player_state {
+                    // Clamp to not go below trim_start (keep at least 0.1s gap)
+                    player_state.trim_end = value
+                        .max(player_state.trim_start + 0.1)
+                        .min(player_state.duration);
+                }
+                Task::none()
+            }
+
+            Message::CopyCommand(cmd) => iced::clipboard::write(cmd),
         }
     }
 
@@ -437,6 +470,8 @@ impl App {
             crop_selection: None,
             selection_state: SelectionState::Idle,
             mouse_position: (0.0, 0.0),
+            trim_start: 0.0,
+            trim_end: 0.0, // Will be set when duration is received
         });
 
         // Switch to editor screen
