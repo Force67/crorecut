@@ -2,7 +2,9 @@ use crate::app::{Message, PlayerViewState, RenderStatus, ResizeHandle, Screen};
 use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
 use crate::video::build_ffmpeg_command;
-use iced::widget::{button, canvas, column, container, image, rich_text, row, span, stack, text};
+use iced::widget::{
+    button, canvas, column, container, image, rich_text, row, span, stack, svg, text,
+};
 use iced::{Alignment, Element, Font, Length};
 
 /// Represents the transform from canvas space to image space (ContentFit::Contain)
@@ -164,9 +166,32 @@ pub fn resize_selection(
 /// Main editor view for the video player screen
 pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message> {
     // Back button and header
-    let back_button = button(text("← Back"))
+    let arrow_svg_bytes = include_bytes!("../../assets/arrow.svg");
+    let arrow_svg = svg::Handle::from_memory(arrow_svg_bytes);
+    let arrow_icon = svg(arrow_svg)
+        .width(20)
+        .height(20)
+        .style(|_theme, _status| svg::Style {
+            color: Some(iced::Color::WHITE),
+        });
+    let back_button = button(arrow_icon)
         .on_press(Message::NavigateTo(Screen::Home))
-        .padding(10);
+        .padding(10)
+        .style(|_theme, status| {
+            let background = match status {
+                button::Status::Hovered => iced::color!(0x414449),
+                button::Status::Pressed => iced::color!(0x292B2D),
+                _ => iced::color!(0x202020),
+            };
+            button::Style {
+                background: Some(iced::Background::Color(background)),
+                border: iced::Border {
+                    radius: 8.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        });
 
     let video_name = player_state
         .video_path
@@ -354,10 +379,9 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
     // Render status indicator
     let status_row: Element<'_, Message> = match &player_state.render_status {
         RenderStatus::Idle => row![].into(),
-        RenderStatus::Rendering => row![
-            text("Rendering...").size(12).color(iced::Color::WHITE),
-        ]
-        .into(),
+        RenderStatus::Rendering => {
+            row![text("Rendering...").size(12).color(iced::Color::WHITE),].into()
+        }
         RenderStatus::Completed(output_path) => {
             let open_link = button(text("Open").size(12).color(link_color))
                 .on_press(Message::OpenFile(output_path.clone()))
