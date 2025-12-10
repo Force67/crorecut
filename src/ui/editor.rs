@@ -2,6 +2,7 @@ use crate::app::{Message, PlayerViewState, RenderStatus, ResizeHandle, Screen};
 use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
 use crate::video::build_ffmpeg_command;
+use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, rich_text, row, span, stack, svg, text,
 };
@@ -369,6 +370,8 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         // Show full command with actual paths
         rich_text(vec![span(ffmpeg_cmd.full.clone()).size(12).color(cmd_gray)])
             .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+            .line_height(LineHeight::Relative(1.5))
+            .height(Length::Fixed(54.0))
     } else {
         // Show masked command with placeholders
         // Split by {input} and {output}, which always appear in that order
@@ -392,7 +395,10 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
             span(after_output.to_string()).size(12).color(cmd_gray),
         ];
 
-        rich_text(spans).wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+        rich_text(spans)
+            .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+            .line_height(LineHeight::Relative(1.5))
+            .height(Length::Fixed(54.0))
     };
 
     let command_container = container(command_text)
