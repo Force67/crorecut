@@ -119,3 +119,55 @@ pub async fn get_video_duration_sec(video_path: PathBuf) -> Result<f64, FrameExt
         FrameExtractionError::ExtractionFailed(format!("Failed to parse duration: {}", e))
     })
 }
+
+/// Get the dimensions (width x height) of a video file
+pub async fn get_video_dimensions(video_path: PathBuf) -> Result<(u32, u32), FrameExtractionError> {
+    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
+        return Err(FrameExtractionError::VideoNotFound(video_path));
+    }
+
+    let mut command = Command::new("ffprobe");
+    command
+        .arg("-v")
+        .arg("error")
+        .arg("-select_streams")
+        .arg("v:0")
+        .arg("-show_entries")
+        .arg("stream=width,height")
+        .arg("-of")
+        .arg("csv=p=0")
+        .arg(&video_path);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let output = command
+        .output()
+        .await
+        .map_err(|_| FrameExtractionError::FFmpegNotFound)?;
+
+    if !output.status.success() {
+        return Err(FrameExtractionError::ExtractionFailed(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+
+    let dimensions_str = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = dimensions_str.trim().split(',').collect();
+
+    if parts.len() != 2 {
+        return Err(FrameExtractionError::ExtractionFailed(
+            "Failed to parse video dimensions".to_string(),
+        ));
+    }
+
+    let width = parts[0].parse::<u32>().map_err(|e| {
+        FrameExtractionError::ExtractionFailed(format!("Failed to parse width: {}", e))
+    })?;
+
+    let height = parts[1].parse::<u32>().map_err(|e| {
+        FrameExtractionError::ExtractionFailed(format!("Failed to parse height: {}", e))
+    })?;
+
+    Ok((width, height))
+}

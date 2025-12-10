@@ -21,14 +21,17 @@ fn format_timestamp(seconds: f64) -> String {
 /// Build an FFmpeg command from the current editing state.
 ///
 /// Returns a structured command with both full and masked versions.
-/// Note: Crop coordinates are in canvas/preview space. The actual video
-/// dimensions may differ, so the crop values shown are relative to the preview.
+/// Crop coordinates are automatically scaled from preview space to original video dimensions.
 pub fn build_ffmpeg_command(
     input_path: &Path,
     crop: Option<&CropSelection>,
     trim_start: f64,
     trim_end: f64,
     duration: f64,
+    video_width: u32,
+    video_height: u32,
+    preview_width: f32,
+    preview_height: f32,
 ) -> FfmpegCommand {
     let mut args = vec!["ffmpeg".to_string()];
     let mut masked_args = vec!["ffmpeg".to_string()];
@@ -64,11 +67,23 @@ pub fn build_ffmpeg_command(
     let mut filters = Vec::new();
 
     if let Some(crop_sel) = crop {
-        // Round to integers for FFmpeg
-        let w = crop_sel.width.round() as i32;
-        let h = crop_sel.height.round() as i32;
-        let x = crop_sel.x.round() as i32;
-        let y = crop_sel.y.round() as i32;
+        // Scale crop coordinates from preview space to original video dimensions
+        let scale_x = if preview_width > 0.0 {
+            video_width as f32 / preview_width
+        } else {
+            1.0
+        };
+
+        let scale_y = if preview_height > 0.0 {
+            video_height as f32 / preview_height
+        } else {
+            1.0
+        };
+
+        let w = (crop_sel.width * scale_x).round() as i32;
+        let h = (crop_sel.height * scale_y).round() as i32;
+        let x = (crop_sel.x * scale_x).round() as i32;
+        let y = (crop_sel.y * scale_y).round() as i32;
 
         if w > 0 && h > 0 {
             filters.push(format!("crop={}:{}:{}:{}", w, h, x, y));

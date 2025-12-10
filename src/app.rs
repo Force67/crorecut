@@ -1,7 +1,9 @@
 use iced::{Element, Task};
 use std::path::PathBuf;
 
-use crate::ui::editor::{editor_view, get_resize_handle, point_in_selection, resize_selection};
+use crate::ui::editor::{
+    ImageTransform, editor_view, get_resize_handle, point_in_selection, resize_selection,
+};
 use crate::ui::grid::VideoItem;
 use crate::ui::selection_canvas::CropSelection;
 use crate::video::VideoMetadata;
@@ -56,19 +58,38 @@ pub struct PlayerViewState {
     pub video_path: PathBuf,
     pub duration: f64,
 
+    // Video properties
+    pub video_width: u32,
+    pub video_height: u32,
+    pub preview_width: f32,
+    pub preview_height: f32,
+
     // Throttling state
     pub last_extraction_time: std::time::Instant,
     pub last_extraction_request_id: u64,
     pub pending_timestamp: Option<f64>,
 
-    // Crop selection state
+    // Crop selection state (in preview image space, not canvas space)
     pub crop_selection: Option<CropSelection>,
     pub selection_state: SelectionState,
     pub mouse_position: (f32, f32),
+    pub canvas_bounds: (f32, f32), // (width, height) of the canvas container
 
     // Trim state
     pub trim_start: f64,
     pub trim_end: f64,
+}
+
+impl PlayerViewState {
+    /// Get the current image transform based on canvas bounds and preview dimensions
+    pub fn get_image_transform(&self) -> ImageTransform {
+        ImageTransform::from_contain(
+            self.canvas_bounds.0,
+            self.canvas_bounds.1,
+            self.preview_width,
+            self.preview_height,
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +147,7 @@ pub enum Message {
         result: Result<Vec<u8>, String>,
     },
     DurationReceived(Result<f64, String>),
+    DimensionsReceived(Result<(u32, u32), String>),
     SliderChanged(f64),
     ExtractPendingFrame,
 
@@ -134,6 +156,8 @@ pub enum Message {
     CropMouseMoved {
         x: f32,
         y: f32,
+        canvas_width: f32,
+        canvas_height: f32,
     },
     CropMouseReleased,
 
@@ -299,6 +323,27 @@ impl App {
                 Task::none()
             }
 
+            Message::DimensionsReceived(result) => {
+                if let Some(ref mut player_state) = self.player_state {
+                    match result {
+                        Ok((width, height)) => {
+                            player_state.video_width = width;
+                            player_state.video_height = height;
+
+                            // Calculate preview dimensions (360p with maintained aspect ratio)
+                            if height > 0 {
+                                player_state.preview_width = (width as f32 * 360.0) / height as f32;
+                                player_state.preview_height = 360.0;
+                            }
+                        }
+                        Err(error_msg) => {
+                            log::error!("Failed to load video dimensions: {}", error_msg);
+                        }
+                    }
+                }
+                Task::none()
+            }
+
             Message::FrameExtracted { request_id, result } => {
                 if let Some(ref mut player_state) = self.player_state {
                     // Only accept frame from most recent extraction
@@ -353,55 +398,83 @@ impl App {
             // Crop selection handlers
             Message::CropMousePressed => {
                 if let Some(ref mut player_state) = self.player_state {
-                    let (x, y) = player_state.mouse_position;
+                    let (canvas_x, canvas_y) = player_state.mouse_position;
 
-                    // Check if clicking on an existing selection
+                    // Transform from canvas space to image space (no clamping)
+                    let transform = player_state.get_image_transform();
+                    let (img_x, img_y) = transform.canvas_to_image(canvas_x, canvas_y);
+
+                    // Check if clicking on an existing selection (selection is in image space)
                     if let Some(selection) = player_state.crop_selection {
                         // Check if clicking on a resize handle
-                        if let Some(handle) = get_resize_handle(x, y, &selection) {
+                        if let Some(handle) = get_resize_handle(img_x, img_y, &selection) {
                             player_state.selection_state = SelectionState::Resizing {
                                 handle,
                                 original: selection,
                             };
                         }
                         // Check if clicking inside selection (for moving)
-                        else if point_in_selection(x, y, &selection) {
+                        else if point_in_selection(img_x, img_y, &selection) {
                             player_state.selection_state = SelectionState::Moving {
-                                offset_x: x - selection.x,
-                                offset_y: y - selection.y,
+                                offset_x: img_x - selection.x,
+                                offset_y: img_y - selection.y,
                             };
                         }
                         // Clicking outside - start new selection
                         else {
                             player_state.crop_selection = None;
                             player_state.selection_state = SelectionState::Creating {
-                                start_x: x,
-                                start_y: y,
+                                start_x: canvas_x,
+                                start_y: canvas_y,
                             };
                         }
                     } else {
                         // No existing selection - start creating new one
                         player_state.selection_state = SelectionState::Creating {
-                            start_x: x,
-                            start_y: y,
+                            start_x: canvas_x,
+                            start_y: canvas_y,
                         };
                     }
                 }
                 Task::none()
             }
 
-            Message::CropMouseMoved { x, y } => {
+            Message::CropMouseMoved {
+                x,
+                y,
+                canvas_width,
+                canvas_height,
+            } => {
                 if let Some(ref mut player_state) = self.player_state {
-                    // Update mouse position
+                    // Update canvas bounds with actual values from canvas
+                    player_state.canvas_bounds = (canvas_width, canvas_height);
+
+                    // Transform from canvas space to image space (no clamping - allow free mouse movement)
+                    let transform = player_state.get_image_transform();
+                    let (img_x, img_y) = transform.canvas_to_image(x, y);
+
+                    // Store mouse position in canvas space
                     player_state.mouse_position = (x, y);
 
                     match player_state.selection_state {
                         SelectionState::Creating { start_x, start_y } => {
-                            // Update selection rectangle
-                            let min_x = start_x.min(x);
-                            let min_y = start_y.min(y);
-                            let max_x = start_x.max(x);
-                            let max_y = start_y.max(y);
+                            // Transform start position from canvas to image space
+                            let (start_img_x, start_img_y) =
+                                transform.canvas_to_image(start_x, start_y);
+
+                            // Create selection in image space with clamped bounds
+                            let min_x = start_img_x
+                                .min(img_x)
+                                .clamp(0.0, player_state.preview_width);
+                            let min_y = start_img_y
+                                .min(img_y)
+                                .clamp(0.0, player_state.preview_height);
+                            let max_x = start_img_x
+                                .max(img_x)
+                                .clamp(0.0, player_state.preview_width);
+                            let max_y = start_img_y
+                                .max(img_y)
+                                .clamp(0.0, player_state.preview_height);
 
                             player_state.crop_selection = Some(CropSelection {
                                 x: min_x,
@@ -412,13 +485,29 @@ impl App {
                         }
                         SelectionState::Moving { offset_x, offset_y } => {
                             if let Some(ref mut selection) = player_state.crop_selection {
-                                selection.x = x - offset_x;
-                                selection.y = y - offset_y;
+                                let new_x = img_x - offset_x;
+                                let new_y = img_y - offset_y;
+
+                                // Clamp to keep selection within image bounds
+                                selection.x =
+                                    new_x.clamp(0.0, player_state.preview_width - selection.width);
+                                selection.y = new_y
+                                    .clamp(0.0, player_state.preview_height - selection.height);
                             }
                         }
                         SelectionState::Resizing { handle, original } => {
                             if let Some(ref mut selection) = player_state.crop_selection {
-                                resize_selection(selection, handle, x, y, &original);
+                                resize_selection(selection, handle, img_x, img_y, &original);
+
+                                // Clamp selection to image bounds
+                                selection.x = selection.x.clamp(0.0, player_state.preview_width);
+                                selection.y = selection.y.clamp(0.0, player_state.preview_height);
+                                selection.width = selection
+                                    .width
+                                    .clamp(10.0, player_state.preview_width - selection.x);
+                                selection.height = selection
+                                    .height
+                                    .clamp(10.0, player_state.preview_height - selection.y);
                             }
                         }
                         SelectionState::Idle => {}
@@ -464,12 +553,17 @@ impl App {
             timestamp: 0.0,
             video_path: video_path.clone(),
             duration: 0.0,
+            video_width: 0,     // Will be set when dimensions are received
+            video_height: 0,    // Will be set when dimensions are received
+            preview_width: 0.0, // Will be calculated when dimensions are received
+            preview_height: 360.0,
             last_extraction_time: std::time::Instant::now(),
             last_extraction_request_id: 0,
             pending_timestamp: None,
             crop_selection: None,
             selection_state: SelectionState::Idle,
             mouse_position: (0.0, 0.0),
+            canvas_bounds: (1.0, 1.0), // Will be updated on first mouse event
             trim_start: 0.0,
             trim_end: 0.0, // Will be set when duration is received
         });
@@ -477,14 +571,19 @@ impl App {
         // Switch to editor screen
         self.current_screen = Screen::Editor;
 
-        // Get video duration and load initial frame
+        // Get video metadata and load initial frame
         let path_for_duration = video_path.clone();
+        let path_for_dimensions = video_path.clone();
         let path_for_frame = video_path;
 
         Task::batch(vec![
             Task::perform(
                 async move { crate::video::get_video_duration_sec(path_for_duration).await },
                 |result| Message::DurationReceived(result.map_err(|e| e.to_string())),
+            ),
+            Task::perform(
+                async move { crate::video::get_video_dimensions(path_for_dimensions).await },
+                |result| Message::DimensionsReceived(result.map_err(|e| e.to_string())),
             ),
             Task::perform(
                 async move {

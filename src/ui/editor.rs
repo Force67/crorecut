@@ -2,10 +2,82 @@ use crate::app::{Message, PlayerViewState, ResizeHandle, Screen};
 use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
 use crate::video::build_ffmpeg_command;
-use iced::widget::{
-    button, canvas, column, container, image, mouse_area, rich_text, row, span, stack, text,
-};
+use iced::widget::{button, canvas, column, container, image, rich_text, row, span, stack, text};
 use iced::{Alignment, Element, Font, Length};
+
+/// Represents the transform from canvas space to image space (ContentFit::Contain)
+#[derive(Debug, Clone, Copy)]
+pub struct ImageTransform {
+    pub scale: f32,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub _displayed_width: f32,
+    pub _displayed_height: f32,
+}
+
+impl ImageTransform {
+    /// Calculate the transform for an image displayed with ContentFit::Contain
+    pub fn from_contain(
+        container_width: f32,
+        container_height: f32,
+        image_width: f32,
+        image_height: f32,
+    ) -> Self {
+        if image_width <= 0.0 || image_height <= 0.0 {
+            return Self {
+                scale: 1.0,
+                offset_x: 0.0,
+                offset_y: 0.0,
+                _displayed_width: 0.0,
+                _displayed_height: 0.0,
+            };
+        }
+
+        // Calculate scale to fit within container while maintaining aspect ratio
+        let scale = (container_width / image_width).min(container_height / image_height);
+
+        let displayed_width = image_width * scale;
+        let displayed_height = image_height * scale;
+
+        // Center the image
+        let offset_x = (container_width - displayed_width) / 2.0;
+        let offset_y = (container_height - displayed_height) / 2.0;
+
+        Self {
+            scale,
+            offset_x,
+            offset_y,
+            _displayed_width: displayed_width,
+            _displayed_height: displayed_height,
+        }
+    }
+
+    /// Transform from canvas space to image space
+    pub fn canvas_to_image(&self, canvas_x: f32, canvas_y: f32) -> (f32, f32) {
+        let image_x = (canvas_x - self.offset_x) / self.scale;
+        let image_y = (canvas_y - self.offset_y) / self.scale;
+        (image_x, image_y)
+    }
+
+    /// Transform from image space to canvas space
+    pub fn image_to_canvas(&self, image_x: f32, image_y: f32) -> (f32, f32) {
+        let canvas_x = image_x * self.scale + self.offset_x;
+        let canvas_y = image_y * self.scale + self.offset_y;
+        (canvas_x, canvas_y)
+    }
+
+    /// Clamp coordinates to image bounds (kept for potential future use)
+    #[allow(dead_code)]
+    pub fn clamp_to_image(
+        &self,
+        x: f32,
+        y: f32,
+        image_width: f32,
+        image_height: f32,
+    ) -> (f32, f32) {
+        (x.clamp(0.0, image_width), y.clamp(0.0, image_height))
+    }
+}
 
 /// Helper function to format timestamps as HH:MM:SS
 fn format_timestamp(seconds: f64) -> String {
@@ -117,24 +189,16 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         // Create canvas for selection overlay
         let selection_canvas = canvas(SelectionCanvas {
             selection: player_state.crop_selection,
+            preview_width: player_state.preview_width,
+            preview_height: player_state.preview_height,
         })
         .width(Length::Fill)
         .height(Length::Fill);
 
-        // Stack image and overlay
+        // Stack image and canvas (canvas handles mouse events)
         let content = stack![image_widget, selection_canvas];
 
-        // Wrap in mouse area for interaction
-        let interactive_content = mouse_area(content)
-            .on_press(Message::CropMousePressed)
-            .on_move(|point: iced::Point| Message::CropMouseMoved {
-                x: point.x,
-                y: point.y,
-            })
-            .on_release(Message::CropMouseReleased)
-            .interaction(iced::mouse::Interaction::Crosshair);
-
-        container(interactive_content)
+        container(content)
             .width(Length::Fill)
             .height(Length::FillPortion(4))
             .center_x(Length::Fill)
@@ -201,6 +265,10 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         player_state.trim_start,
         player_state.trim_end,
         player_state.duration,
+        player_state.video_width,
+        player_state.video_height,
+        player_state.preview_width,
+        player_state.preview_height,
     );
 
     // Label with inline copy link
