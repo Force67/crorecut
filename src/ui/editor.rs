@@ -3,7 +3,7 @@ use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
 use crate::video::build_ffmpeg_command;
 use iced::widget::{
-    button, canvas, column, container, image, rich_text, row, span, stack, svg, text,
+    button, canvas, column, container, image, mouse_area, rich_text, row, span, stack, svg, text,
 };
 use iced::{Alignment, Element, Font, Length};
 
@@ -331,37 +331,44 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
     .spacing(0)
     .align_y(Alignment::Center);
 
-    // Build rich text with colored placeholders
-    // Split by {input} and {output}, which always appear in that order
-    let parts: Vec<&str> = ffmpeg_cmd.masked.split("{input}").collect();
-    let before_input = parts[0];
-    let after_input_parts: Vec<&str> = parts[1].split("{output}").collect();
-    let between = after_input_parts[0];
-    let after_output = after_input_parts.get(1).unwrap_or(&"");
-
+    // Build rich text - show full command when hovered, masked when not
     let cmd_gray = iced::Color::from_rgb(0.7, 0.7, 0.7);
     let italic = Font {
         style: iced::font::Style::Italic,
         ..Font::default()
     };
 
-    let spans: Vec<iced::widget::text::Span<'_, Font>> = vec![
-        span(before_input.to_string()).size(12).color(cmd_gray),
-        span("input")
-            .size(12)
-            .color(iced::Color::from_rgb(0.4, 0.9, 0.5))
-            .font(italic),
-        span(between.to_string()).size(12).color(cmd_gray),
-        span("output")
-            .size(12)
-            .color(iced::Color::from_rgb(0.5, 0.7, 1.0))
-            .font(italic),
-        span(after_output.to_string()).size(12).color(cmd_gray),
-    ];
+    let command_text = if player_state.is_command_hovered {
+        // Show full command with actual paths
+        rich_text(vec![span(ffmpeg_cmd.full.clone()).size(12).color(cmd_gray)])
+            .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+    } else {
+        // Show masked command with placeholders
+        // Split by {input} and {output}, which always appear in that order
+        let parts: Vec<&str> = ffmpeg_cmd.masked.split("{input}").collect();
+        let before_input = parts[0];
+        let after_input_parts: Vec<&str> = parts[1].split("{output}").collect();
+        let between = after_input_parts[0];
+        let after_output = after_input_parts.get(1).unwrap_or(&"");
 
-    let command_text = rich_text(spans).wrapping(iced::widget::text::Wrapping::WordOrGlyph);
+        let spans: Vec<iced::widget::text::Span<'_, Font>> = vec![
+            span(before_input.to_string()).size(12).color(cmd_gray),
+            span("input")
+                .size(12)
+                .color(iced::Color::from_rgb(0.4, 0.9, 0.5))
+                .font(italic),
+            span(between.to_string()).size(12).color(cmd_gray),
+            span("output")
+                .size(12)
+                .color(iced::Color::from_rgb(0.5, 0.7, 1.0))
+                .font(italic),
+            span(after_output.to_string()).size(12).color(cmd_gray),
+        ];
 
-    let command_display = container(command_text)
+        rich_text(spans).wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+    };
+
+    let command_container = container(command_text)
         .padding(10)
         .width(Length::Fill)
         .style(|_theme| container::Style {
@@ -375,6 +382,11 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
             },
             ..Default::default()
         });
+
+    // Wrap in mouse_area to detect hover
+    let command_display = mouse_area(command_container)
+        .on_enter(Message::CommandPreviewHovered(true))
+        .on_exit(Message::CommandPreviewHovered(false));
 
     // Render status indicator
     let status_row: Element<'_, Message> = match &player_state.render_status {
@@ -401,7 +413,7 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
                 });
             let green = iced::Color::from_rgb(0.4, 0.9, 0.4);
             row![
-                text("Completed! (").size(12).color(green),
+                text("Done! (").size(12).color(green),
                 open_link,
                 text(" or ").size(12).color(green),
                 delete_link,

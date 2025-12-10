@@ -90,6 +90,9 @@ pub struct PlayerViewState {
 
     // Render state
     pub render_status: RenderStatus,
+
+    // Command preview hover state
+    pub is_command_hovered: bool,
 }
 
 impl PlayerViewState {
@@ -186,6 +189,7 @@ pub enum Message {
     CommandCompleted(Result<PathBuf, String>),
     OpenFile(PathBuf),
     DeleteFile(PathBuf),
+    CommandPreviewHovered(bool),
 }
 
 impl App {
@@ -625,6 +629,13 @@ impl App {
                 }
                 Task::none()
             }
+
+            Message::CommandPreviewHovered(is_hovered) => {
+                if let Some(ref mut player_state) = self.player_state {
+                    player_state.is_command_hovered = is_hovered;
+                }
+                Task::none()
+            }
         }
     }
 
@@ -650,6 +661,7 @@ impl App {
             trim_start: 0.0,
             trim_end: 0.0, // Will be set when duration is received
             render_status: RenderStatus::Idle,
+            is_command_hovered: false,
         });
 
         // Switch to editor screen
