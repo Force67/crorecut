@@ -51,6 +51,15 @@ pub enum SelectionState {
     },
 }
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum RenderStatus {
+    #[default]
+    Idle,
+    Rendering,
+    Completed(PathBuf),
+    Failed(String),
+}
+
 #[derive(Debug, Clone)]
 pub struct PlayerViewState {
     pub frame_handle: Option<iced::advanced::image::Handle>,
@@ -78,6 +87,9 @@ pub struct PlayerViewState {
     // Trim state
     pub trim_start: f64,
     pub trim_end: f64,
+
+    // Render state
+    pub render_status: RenderStatus,
 }
 
 impl PlayerViewState {
@@ -167,6 +179,13 @@ pub enum Message {
 
     // Command display
     CopyCommand(String),
+    RunCommand {
+        args: Vec<String>,
+        output_path: PathBuf,
+    },
+    CommandCompleted(Result<PathBuf, String>),
+    OpenFile(PathBuf),
+    DeleteFile(PathBuf),
 }
 
 impl App {
@@ -542,6 +561,70 @@ impl App {
             }
 
             Message::CopyCommand(cmd) => iced::clipboard::write(cmd),
+
+            Message::RunCommand { args, output_path } => {
+                if let Some(ref mut player_state) = self.player_state {
+                    player_state.render_status = RenderStatus::Rendering;
+                }
+                Task::perform(
+                    async move {
+                        crate::video::run_ffmpeg_command(&args).await?;
+                        Ok(output_path)
+                    },
+                    |result: Result<PathBuf, crate::video::error::FfmpegCommandError>| {
+                        Message::CommandCompleted(result.map_err(|e| e.to_string()))
+                    },
+                )
+            }
+
+            Message::CommandCompleted(result) => {
+                if let Some(ref mut player_state) = self.player_state {
+                    match result {
+                        Ok(output_path) => {
+                            log::info!("FFmpeg command completed successfully");
+                            player_state.render_status = RenderStatus::Completed(output_path);
+                        }
+                        Err(ref error_msg) => {
+                            log::error!("FFmpeg command failed: {}", error_msg);
+                            player_state.render_status = RenderStatus::Failed(error_msg.clone());
+                        }
+                    }
+                }
+                Task::none()
+            }
+
+            Message::OpenFile(path) => {
+                #[cfg(target_os = "windows")]
+                let result = std::process::Command::new("cmd")
+                    .args(["/C", "start", "", &path.to_string_lossy()])
+                    .spawn();
+
+                #[cfg(target_os = "macos")]
+                let result = std::process::Command::new("open").arg(&path).spawn();
+
+                #[cfg(target_os = "linux")]
+                let result = std::process::Command::new("xdg-open").arg(&path).spawn();
+
+                if let Err(e) = result {
+                    log::error!("Failed to open file: {}", e);
+                }
+                Task::none()
+            }
+
+            Message::DeleteFile(path) => {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {
+                        log::info!("Deleted file: {}", path.display());
+                        if let Some(ref mut player_state) = self.player_state {
+                            player_state.render_status = RenderStatus::Idle;
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to delete file: {}", e);
+                    }
+                }
+                Task::none()
+            }
         }
     }
 
@@ -566,6 +649,7 @@ impl App {
             canvas_bounds: (1.0, 1.0), // Will be updated on first mouse event
             trim_start: 0.0,
             trim_end: 0.0, // Will be set when duration is received
+            render_status: RenderStatus::Idle,
         });
 
         // Switch to editor screen

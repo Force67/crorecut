@@ -6,7 +6,7 @@ use tokio::process::Command;
 #[allow(unused_imports)] // Trait must be in scope for .creation_flags() method
 use std::os::windows::process::CommandExt;
 
-use super::error::FrameExtractionError;
+use super::error::{FfmpegCommandError, FrameExtractionError};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -170,4 +170,28 @@ pub async fn get_video_dimensions(video_path: PathBuf) -> Result<(u32, u32), Fra
     })?;
 
     Ok((width, height))
+}
+
+/// Execute an FFmpeg command with the given arguments.
+pub async fn run_ffmpeg_command(args: &[String]) -> Result<(), FfmpegCommandError> {
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(args);
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|_| FfmpegCommandError::FFmpegNotFound)?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(FfmpegCommandError::CommandFailed(stderr.to_string()));
+    }
+
+    Ok(())
 }

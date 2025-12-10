@@ -1,4 +1,4 @@
-use crate::app::{Message, PlayerViewState, ResizeHandle, Screen};
+use crate::app::{Message, PlayerViewState, RenderStatus, ResizeHandle, Screen};
 use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
 use crate::video::build_ffmpeg_command;
@@ -271,28 +271,37 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         player_state.preview_height,
     );
 
-    // Label with inline copy link
-    let copy_link = button(
-        text("Copy")
-            .size(12)
-            .color(iced::Color::from_rgb(0.4, 0.7, 1.0)),
-    )
-    .on_press(Message::CopyCommand(ffmpeg_cmd.full))
-    .padding(0)
-    .style(|_theme, _status| button::Style {
-        background: None,
-        text_color: iced::Color::from_rgb(0.4, 0.7, 1.0),
-        ..Default::default()
-    });
+    // Label with inline copy and run links
+    let link_color = iced::Color::from_rgb(0.4, 0.7, 1.0);
 
+    let copy_link = button(text("Copy").size(12).color(link_color))
+        .on_press(Message::CopyCommand(ffmpeg_cmd.full.clone()))
+        .padding(0)
+        .style(|_theme, _status| button::Style {
+            background: None,
+            text_color: iced::Color::from_rgb(0.4, 0.7, 1.0),
+            ..Default::default()
+        });
+
+    let run_link = button(text("Run").size(12).color(link_color))
+        .on_press(Message::RunCommand {
+            args: ffmpeg_cmd.args,
+            output_path: ffmpeg_cmd.output_path,
+        })
+        .padding(0)
+        .style(|_theme, _status| button::Style {
+            background: None,
+            text_color: iced::Color::from_rgb(0.4, 0.7, 1.0),
+            ..Default::default()
+        });
+
+    let gray = iced::Color::from_rgb(0.6, 0.6, 0.6);
     let command_header = row![
-        text("FFmpeg Command (")
-            .size(12)
-            .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        text("FFmpeg Command (").size(12).color(gray),
         copy_link,
-        text("):")
-            .size(12)
-            .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        text(" or ").size(12).color(gray),
+        run_link,
+        text("):").size(12).color(gray),
     ]
     .spacing(0)
     .align_y(Alignment::Center);
@@ -305,24 +314,24 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
     let between = after_input_parts[0];
     let after_output = after_input_parts.get(1).unwrap_or(&"");
 
-    let gray = iced::Color::from_rgb(0.7, 0.7, 0.7);
+    let cmd_gray = iced::Color::from_rgb(0.7, 0.7, 0.7);
     let italic = Font {
         style: iced::font::Style::Italic,
         ..Font::default()
     };
 
     let spans: Vec<iced::widget::text::Span<'_, Font>> = vec![
-        span(before_input.to_string()).size(12).color(gray),
+        span(before_input.to_string()).size(12).color(cmd_gray),
         span("input")
             .size(12)
             .color(iced::Color::from_rgb(0.4, 0.9, 0.5))
             .font(italic),
-        span(between.to_string()).size(12).color(gray),
+        span(between.to_string()).size(12).color(cmd_gray),
         span("output")
             .size(12)
             .color(iced::Color::from_rgb(0.5, 0.7, 1.0))
             .font(italic),
-        span(after_output.to_string()).size(12).color(gray),
+        span(after_output.to_string()).size(12).color(cmd_gray),
     ];
 
     let command_text = rich_text(spans).wrapping(iced::widget::text::Wrapping::WordOrGlyph);
@@ -342,8 +351,51 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
             ..Default::default()
         });
 
-    let command_section = column![command_header, command_display]
-        .spacing(4)
+    // Render status indicator
+    let status_row: Element<'_, Message> = match &player_state.render_status {
+        RenderStatus::Idle => row![].into(),
+        RenderStatus::Rendering => row![
+            text("Rendering...").size(12).color(iced::Color::WHITE),
+        ]
+        .into(),
+        RenderStatus::Completed(output_path) => {
+            let open_link = button(text("Open").size(12).color(link_color))
+                .on_press(Message::OpenFile(output_path.clone()))
+                .padding(0)
+                .style(|_theme, _status| button::Style {
+                    background: None,
+                    text_color: iced::Color::from_rgb(0.4, 0.7, 1.0),
+                    ..Default::default()
+                });
+            let delete_link = button(text("Delete").size(12).color(link_color))
+                .on_press(Message::DeleteFile(output_path.clone()))
+                .padding(0)
+                .style(|_theme, _status| button::Style {
+                    background: None,
+                    text_color: iced::Color::from_rgb(0.4, 0.7, 1.0),
+                    ..Default::default()
+                });
+            let green = iced::Color::from_rgb(0.4, 0.9, 0.4);
+            row![
+                text("Completed! (").size(12).color(green),
+                open_link,
+                text(" or ").size(12).color(green),
+                delete_link,
+                text(")").size(12).color(green),
+            ]
+            .spacing(0)
+            .into()
+        }
+        RenderStatus::Failed(err) => row![
+            text(format!("Failed: {}", err))
+                .size(12)
+                .color(iced::Color::from_rgb(1.0, 0.4, 0.4)),
+        ]
+        .into(),
+    };
+
+    let command_section = column![command_header, command_display, status_row]
+        .spacing(8)
         .padding(20)
         .width(Length::Fill);
 

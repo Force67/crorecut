@@ -1,13 +1,17 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::ui::selection_canvas::CropSelection;
 
-/// Structured FFmpeg command for display purposes
+/// Structured FFmpeg command for display and execution
 pub struct FfmpegCommand {
-    /// The full command string
+    /// The full command string (for display/copy)
     pub full: String,
-    /// Command with placeholders for input/output
+    /// Command with placeholders for input/output (for display)
     pub masked: String,
+    /// Raw arguments for direct execution (without shell quoting)
+    pub args: Vec<String>,
+    /// Output path for the rendered video
+    pub output_path: PathBuf,
 }
 
 /// Format seconds as HH:MM:SS.mmm for FFmpeg
@@ -33,34 +37,47 @@ pub fn build_ffmpeg_command(
     preview_width: f32,
     preview_height: f32,
 ) -> FfmpegCommand {
-    let mut args = vec!["ffmpeg".to_string()];
+    // display_args: for copy-paste (with quotes around paths)
+    // masked_args: for display with placeholders
+    // exec_args: raw args for direct execution (no quotes needed)
+    let mut display_args = vec!["ffmpeg".to_string()];
     let mut masked_args = vec!["ffmpeg".to_string()];
+    let mut exec_args: Vec<String> = Vec::new();
 
     // Check if trim is active (not at default 0..duration)
     let is_trimming = trim_start > 0.01 || (duration > 0.0 && trim_end < duration - 0.01);
 
     // Add seek position before input for fast seeking
     if is_trimming && trim_start > 0.01 {
-        args.push("-ss".to_string());
-        args.push(format_timestamp(trim_start));
+        let ts = format_timestamp(trim_start);
+        display_args.push("-ss".to_string());
+        display_args.push(ts.clone());
         masked_args.push("-ss".to_string());
-        masked_args.push(format_timestamp(trim_start));
+        masked_args.push(ts.clone());
+        exec_args.push("-ss".to_string());
+        exec_args.push(ts);
     }
 
     // Input file
-    args.push("-i".to_string());
-    args.push(format!("\"{}\"", input_path.display()));
+    let input_str = input_path.to_string_lossy().to_string();
+    display_args.push("-i".to_string());
+    display_args.push(format!("\"{}\"", input_str));
     masked_args.push("-i".to_string());
     masked_args.push("{input}".to_string());
+    exec_args.push("-i".to_string());
+    exec_args.push(input_str);
 
     // Add duration/end time after input
     if is_trimming {
         // Use -t (duration) rather than -to since we're seeking with -ss
         let trim_duration = trim_end - trim_start;
-        args.push("-t".to_string());
-        args.push(format_timestamp(trim_duration));
+        let ts = format_timestamp(trim_duration);
+        display_args.push("-t".to_string());
+        display_args.push(ts.clone());
         masked_args.push("-t".to_string());
-        masked_args.push(format_timestamp(trim_duration));
+        masked_args.push(ts.clone());
+        exec_args.push("-t".to_string());
+        exec_args.push(ts);
     }
 
     // Video filters
@@ -91,11 +108,13 @@ pub fn build_ffmpeg_command(
     }
 
     if !filters.is_empty() {
-        let filter_str = format!("\"{}\"", filters.join(","));
-        args.push("-vf".to_string());
-        args.push(filter_str.clone());
+        let filter_str = filters.join(",");
+        display_args.push("-vf".to_string());
+        display_args.push(format!("\"{}\"", filter_str));
         masked_args.push("-vf".to_string());
-        masked_args.push(filter_str);
+        masked_args.push(format!("\"{}\"", filter_str));
+        exec_args.push("-vf".to_string());
+        exec_args.push(filter_str);
     }
 
     // Generate output filename
@@ -111,16 +130,20 @@ pub fn build_ffmpeg_command(
     let output_name = format!("{}_edited.{}", stem, ext);
 
     // Output path (same directory as input)
-    let output_path_buf = input_path
+    let output_path = input_path
         .parent()
         .map(|p| p.join(&output_name))
         .unwrap_or_else(|| output_name.clone().into());
 
-    args.push(format!("\"{}\"", output_path_buf.display()));
+    let output_str = output_path.to_string_lossy().to_string();
+    display_args.push(format!("\"{}\"", output_str));
     masked_args.push("{output}".to_string());
+    exec_args.push(output_str);
 
     FfmpegCommand {
-        full: args.join(" "),
+        full: display_args.join(" "),
         masked: masked_args.join(" "),
+        args: exec_args,
+        output_path,
     }
 }
