@@ -166,16 +166,43 @@ pub fn resize_selection(
 /// Main editor view for the video player screen
 pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message> {
     // Back button and header
-    let arrow_svg_bytes = include_bytes!("../../assets/arrow.svg");
-    let arrow_svg = svg::Handle::from_memory(arrow_svg_bytes);
+
+    let arrow_svg = svg::Handle::from_memory(crate::icons::ARROW_SVG);
     let arrow_icon = svg(arrow_svg)
         .width(20)
         .height(20)
         .style(|_theme, _status| svg::Style {
             color: Some(iced::Color::WHITE),
         });
+    let folder_svg = svg::Handle::from_memory(crate::icons::FOLDER_SVG);
+    let folder_icon = svg(folder_svg)
+        .width(20)
+        .height(20)
+        .style(|_theme, _status| svg::Style {
+            color: Some(iced::Color::WHITE),
+        });
+
     let back_button = button(arrow_icon)
         .on_press(Message::NavigateTo(Screen::Home))
+        .padding(10)
+        .style(|_theme, status| {
+            let background = match status {
+                button::Status::Hovered => iced::color!(0x414449),
+                button::Status::Pressed => iced::color!(0x292B2D),
+                _ => iced::color!(0x202020),
+            };
+            button::Style {
+                background: Some(iced::Background::Color(background)),
+                border: iced::Border {
+                    radius: 8.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        });
+
+    let folder_button = button(folder_icon)
+        .on_press(Message::OpenParentDir(player_state.video_path.clone()))
         .padding(10)
         .style(|_theme, status| {
             let background = match status {
@@ -199,8 +226,8 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         .and_then(|n| n.to_str())
         .unwrap_or("Unknown");
 
-    let header = row![back_button, text(video_name).size(20)]
-        .spacing(20)
+    let header = row![back_button, folder_button, text(video_name).size(20)]
+        .spacing(10)
         .padding(10)
         .align_y(Alignment::Center);
 

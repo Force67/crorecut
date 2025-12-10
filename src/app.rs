@@ -189,6 +189,7 @@ pub enum Message {
     CommandCompleted(Result<PathBuf, String>),
     OpenFile(PathBuf),
     DeleteFile(PathBuf),
+    OpenParentDir(PathBuf),
     CommandPreviewHovered(bool),
 }
 
@@ -598,18 +599,7 @@ impl App {
             }
 
             Message::OpenFile(path) => {
-                #[cfg(target_os = "windows")]
-                let result = std::process::Command::new("cmd")
-                    .args(["/C", "start", "", &path.to_string_lossy()])
-                    .spawn();
-
-                #[cfg(target_os = "macos")]
-                let result = std::process::Command::new("open").arg(&path).spawn();
-
-                #[cfg(target_os = "linux")]
-                let result = std::process::Command::new("xdg-open").arg(&path).spawn();
-
-                if let Err(e) = result {
+                if let Err(e) = open::that_detached(&path) {
                     log::error!("Failed to open file: {}", e);
                 }
                 Task::none()
@@ -626,6 +616,17 @@ impl App {
                     Err(e) => {
                         log::error!("Failed to delete file: {}", e);
                     }
+                }
+                Task::none()
+            }
+
+            Message::OpenParentDir(filepath) => {
+                if let Some(parent) = filepath.parent() {
+                    if let Err(e) = open::that_detached(parent) {
+                        log::error!("Failed to open parent directory: {}", e);
+                    }
+                } else {
+                    log::warn!("Path has no parent directory: {}", filepath.display());
                 }
                 Task::none()
             }
