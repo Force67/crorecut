@@ -16,8 +16,9 @@ use app::App;
 fn main() -> iced::Result {
     env_logger::init();
 
-    let icon = iced::window::icon::from_file_data(icons::WINDOW_ICON, Some(image::ImageFormat::Ico))
-        .expect("Failed to load window icon");
+    let icon =
+        iced::window::icon::from_file_data(icons::WINDOW_ICON, Some(image::ImageFormat::Ico))
+            .expect("Failed to load window icon");
 
     iced::application(App::new, App::update, App::view)
         .title(App::title)

@@ -52,17 +52,21 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .width(Length::Fill)
         .height(Length::Fill),
 
-        ThumbnailState::Failed(_) => container(text("X").size(40))
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_theme| container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(
-                    0.3, 0.1, 0.1,
-                ))),
-                ..Default::default()
-            }),
+        ThumbnailState::Failed(error) => container(
+            column![text("X").size(40), text(error).size(10)]
+                .align_x(Alignment::Center)
+                .spacing(4),
+        )
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(iced::Color::from_rgb(
+                0.3, 0.1, 0.1,
+            ))),
+            ..Default::default()
+        }),
     };
 
     let filename_label = text(&video.metadata.file_name)

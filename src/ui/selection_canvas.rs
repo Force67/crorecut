@@ -42,25 +42,24 @@ impl iced::widget::canvas::Program<Message> for SelectionCanvas {
         // Update canvas bounds in state
         state.bounds = (bounds.width, bounds.height);
 
-        if let Some(position) = cursor.position_in(bounds) {
-            match event {
-                Event::Mouse(mouse_event) => match mouse_event {
-                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                        return Some(Action::publish(Message::CropMousePressed));
-                    }
-                    mouse::Event::ButtonReleased(mouse::Button::Left) => {
-                        return Some(Action::publish(Message::CropMouseReleased));
-                    }
-                    mouse::Event::CursorMoved { .. } => {
-                        return Some(Action::publish(Message::CropMouseMoved {
-                            x: position.x,
-                            y: position.y,
-                            canvas_width: bounds.width,
-                            canvas_height: bounds.height,
-                        }));
-                    }
-                    _ => {}
-                },
+        if let Some(position) = cursor.position_in(bounds)
+            && let Event::Mouse(mouse_event) = event
+        {
+            match mouse_event {
+                mouse::Event::ButtonPressed(mouse::Button::Left) => {
+                    return Some(Action::publish(Message::CropMousePressed));
+                }
+                mouse::Event::ButtonReleased(mouse::Button::Left) => {
+                    return Some(Action::publish(Message::CropMouseReleased));
+                }
+                mouse::Event::CursorMoved { .. } => {
+                    return Some(Action::publish(Message::CropMouseMoved {
+                        x: position.x,
+                        y: position.y,
+                        canvas_width: bounds.width,
+                        canvas_height: bounds.height,
+                    }));
+                }
                 _ => {}
             }
         }

@@ -1,7 +1,7 @@
 use crate::app::{Message, PlayerViewState, RenderStatus, ResizeHandle, Screen};
 use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
-use crate::video::build_ffmpeg_command;
+use crate::video::{VideoDimensions, build_ffmpeg_command};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, rich_text, row, span, stack, svg, text,
@@ -312,16 +312,19 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
     .width(Length::Fill);
 
     // FFmpeg command display
+    let dimen = VideoDimensions {
+        video_width: player_state.video_width,
+        video_height: player_state.video_height,
+        preview_width: player_state.preview_width,
+        preview_height: player_state.preview_height,
+    };
     let ffmpeg_cmd = build_ffmpeg_command(
         &player_state.video_path,
         player_state.crop_selection.as_ref(),
         player_state.trim_start,
         player_state.trim_end,
         player_state.duration,
-        player_state.video_width,
-        player_state.video_height,
-        player_state.preview_width,
-        player_state.preview_height,
+        &dimen,
     );
 
     // Label with inline copy and run links

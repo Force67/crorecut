@@ -12,7 +12,7 @@ use crate::video::VideoMetadata;
 pub enum ScanStatus {
     NotStarted,
     Scanning,
-    Complete { count: usize },
+    Complete,
     Error(String),
 }
 
@@ -73,10 +73,13 @@ pub struct PlayerViewState {
     pub preview_width: f32,
     pub preview_height: f32,
 
-    // Throttling state
-    pub last_extraction_time: std::time::Instant,
+    // Extraction state
+    pub is_extracting: bool,
     pub last_extraction_request_id: u64,
     pub pending_timestamp: Option<f64>,
+
+    // Frame cache
+    pub frame_cache: crate::video::FrameCache,
 
     // Crop selection state (in preview image space, not canvas space)
     pub crop_selection: Option<CropSelection>,
@@ -155,8 +158,7 @@ pub enum Message {
     },
     VideoSelected(PathBuf),
 
-    // Player View (existing, for future use)
-    LoadFrame,
+    // Player View
     FrameExtracted {
         request_id: u64,
         result: Result<Vec<u8>, String>,
@@ -164,7 +166,6 @@ pub enum Message {
     DurationReceived(Result<f64, String>),
     DimensionsReceived(Result<(u32, u32), String>),
     SliderChanged(f64),
-    ExtractPendingFrame,
 
     // Crop selection
     CropMousePressed,
@@ -226,8 +227,6 @@ impl App {
                     Ok(metadata_list) => {
                         use crate::ui::grid::{ThumbnailState, VideoItem};
 
-                        let count = metadata_list.len();
-
                         self.grid_state.videos = metadata_list
                             .into_iter()
                             .map(|metadata| VideoItem {
@@ -244,7 +243,7 @@ impl App {
                             .rev()
                             .collect();
 
-                        self.grid_state.scan_status = ScanStatus::Complete { count };
+                        self.grid_state.scan_status = ScanStatus::Complete;
 
                         // Start multiple thumbnail generations in parallel
                         let mut tasks = Vec::new();
@@ -340,7 +339,7 @@ impl App {
                             player_state.trim_end = duration;
                         }
                         Err(error_msg) => {
-                            log::error!("Failed to load video duration: {}", error_msg);
+                            log::error!("Failed to load video duration: {error_msg}");
                         }
                     }
                 }
@@ -361,7 +360,7 @@ impl App {
                             }
                         }
                         Err(error_msg) => {
-                            log::error!("Failed to load video dimensions: {}", error_msg);
+                            log::error!("Failed to load video dimensions: {error_msg}");
                         }
                     }
                 }
@@ -382,42 +381,34 @@ impl App {
 
                     match result {
                         Ok(frame_bytes) => {
+                            // Cache the frame before converting to Handle
+                            player_state.frame_cache.insert(
+                                player_state.video_path.clone(),
+                                player_state.timestamp,
+                                frame_bytes.clone(),
+                            );
+
                             player_state.frame_handle =
                                 Some(iced::advanced::image::Handle::from_bytes(frame_bytes));
                         }
                         Err(error_msg) => {
-                            log::error!("Frame extraction failed: {}", error_msg);
+                            log::error!("Frame extraction failed: {error_msg}");
                             // Keep existing frame visible on error
                         }
+                    }
+
+                    // Mark extraction as complete
+                    player_state.is_extracting = false;
+
+                    // If there's a pending timestamp, extract it now
+                    if let Some(pending_ts) = player_state.pending_timestamp {
+                        return self.handle_slider_changed(pending_ts);
                     }
                 }
                 Task::none()
             }
 
             Message::SliderChanged(new_timestamp) => self.handle_slider_changed(new_timestamp),
-
-            Message::ExtractPendingFrame => self.handle_extract_pending_frame(),
-
-            Message::LoadFrame => {
-                if let Some(ref mut player_state) = self.player_state {
-                    player_state.last_extraction_request_id += 1;
-                    player_state.last_extraction_time = std::time::Instant::now();
-
-                    let video_path = player_state.video_path.clone();
-                    let timestamp = player_state.timestamp;
-                    let request_id = player_state.last_extraction_request_id;
-
-                    return Task::perform(
-                        async move {
-                            crate::video::extract_frame(video_path, timestamp)
-                                .await
-                                .map_err(|e| e.to_string())
-                        },
-                        move |result| Message::FrameExtracted { request_id, result },
-                    );
-                }
-                Task::none()
-            }
 
             // Crop selection handlers
             Message::CropMousePressed => {
@@ -590,7 +581,7 @@ impl App {
                             player_state.render_status = RenderStatus::Completed(output_path);
                         }
                         Err(ref error_msg) => {
-                            log::error!("FFmpeg command failed: {}", error_msg);
+                            log::error!("FFmpeg command failed: {error_msg}");
                             player_state.render_status = RenderStatus::Failed(error_msg.clone());
                         }
                     }
@@ -600,7 +591,7 @@ impl App {
 
             Message::OpenFile(path) => {
                 if let Err(e) = open::that_detached(&path) {
-                    log::error!("Failed to open file: {}", e);
+                    log::error!("Failed to open file: {e}");
                 }
                 Task::none()
             }
@@ -614,7 +605,7 @@ impl App {
                         }
                     }
                     Err(e) => {
-                        log::error!("Failed to delete file: {}", e);
+                        log::error!("Failed to delete file: {e}");
                     }
                 }
                 Task::none()
@@ -623,7 +614,7 @@ impl App {
             Message::OpenParentDir(filepath) => {
                 if let Some(parent) = filepath.parent() {
                     if let Err(e) = open::that_detached(parent) {
-                        log::error!("Failed to open parent directory: {}", e);
+                        log::error!("Failed to open parent directory: {e}");
                     }
                 } else {
                     log::warn!("Path has no parent directory: {}", filepath.display());
@@ -652,9 +643,10 @@ impl App {
             video_height: 0,    // Will be set when dimensions are received
             preview_width: 0.0, // Will be calculated when dimensions are received
             preview_height: 360.0,
-            last_extraction_time: std::time::Instant::now(),
+            is_extracting: false,
             last_extraction_request_id: 0,
             pending_timestamp: None,
+            frame_cache: crate::video::FrameCache::new(75),
             crop_selection: None,
             selection_state: SelectionState::Idle,
             mouse_position: (0.0, 0.0),
@@ -696,18 +688,32 @@ impl App {
         ])
     }
 
-    /// Handle slider changes with throttling to avoid excessive frame extractions
+    /// Handle slider changes with single-extraction limit to avoid `FFmpeg` process spam
     fn handle_slider_changed(&mut self, new_timestamp: f64) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state {
             // Update timestamp immediately for responsive UI
             player_state.timestamp = new_timestamp;
 
-            let elapsed = player_state.last_extraction_time.elapsed();
+            // Check cache first
+            if let Some(cached_bytes) = player_state
+                .frame_cache
+                .get(&player_state.video_path, new_timestamp)
+            {
+                // Cache hit! Update frame immediately without spawning FFmpeg
+                player_state.frame_handle =
+                    Some(iced::advanced::image::Handle::from_bytes(cached_bytes));
+                player_state.pending_timestamp = None;
+                return Task::none();
+            }
 
-            if elapsed >= std::time::Duration::from_millis(100) {
-                // Throttle window passed - spawn extraction
+            // Cache miss - check if extraction is already in progress
+            if player_state.is_extracting {
+                // Extraction in progress - store as pending (will be processed when current extraction finishes)
+                player_state.pending_timestamp = Some(new_timestamp);
+            } else {
+                // No extraction in progress - spawn FFmpeg immediately
+                player_state.is_extracting = true;
                 player_state.last_extraction_request_id += 1;
-                player_state.last_extraction_time = std::time::Instant::now();
                 player_state.pending_timestamp = None;
 
                 let video_path = player_state.video_path.clone();
@@ -721,49 +727,6 @@ impl App {
                     },
                     move |result| Message::FrameExtracted { request_id, result },
                 );
-            } else {
-                // Within throttle window - store as pending
-                player_state.pending_timestamp = Some(new_timestamp);
-
-                // Schedule extraction after remaining throttle time
-                let remaining_ms = 100 - elapsed.as_millis() as u64;
-                return Task::perform(
-                    async move {
-                        tokio::time::sleep(std::time::Duration::from_millis(remaining_ms)).await;
-                        Message::ExtractPendingFrame
-                    },
-                    |msg| msg,
-                );
-            }
-        }
-        Task::none()
-    }
-
-    /// Extract a pending frame after throttle delay
-    fn handle_extract_pending_frame(&mut self) -> Task<Message> {
-        if let Some(ref mut player_state) = self.player_state {
-            // Check if there's still a pending timestamp to extract
-            if let Some(pending_ts) = player_state.pending_timestamp {
-                let elapsed = player_state.last_extraction_time.elapsed();
-
-                // Verify throttle window passed (defensive against overlapping schedules)
-                if elapsed >= std::time::Duration::from_millis(100) {
-                    player_state.last_extraction_request_id += 1;
-                    player_state.last_extraction_time = std::time::Instant::now();
-                    player_state.pending_timestamp = None;
-
-                    let video_path = player_state.video_path.clone();
-                    let request_id = player_state.last_extraction_request_id;
-
-                    return Task::perform(
-                        async move {
-                            crate::video::extract_frame(video_path, pending_ts)
-                                .await
-                                .map_err(|e| e.to_string())
-                        },
-                        move |result| Message::FrameExtracted { request_id, result },
-                    );
-                }
             }
         }
         Task::none()
@@ -798,7 +761,7 @@ impl App {
                     .into()
             }
 
-            ScanStatus::Complete { .. } => grid_view(&grid_state.videos),
+            ScanStatus::Complete => grid_view(&grid_state.videos),
 
             ScanStatus::Error(error_msg) => container(
                 column![

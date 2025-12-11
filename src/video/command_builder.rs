@@ -2,6 +2,14 @@ use std::path::{Path, PathBuf};
 
 use crate::ui::selection_canvas::CropSelection;
 
+/// Video dimensions (original and preview)
+pub struct VideoDimensions {
+    pub video_width: u32,
+    pub video_height: u32,
+    pub preview_width: f32,
+    pub preview_height: f32,
+}
+
 /// Structured FFmpeg command for display and execution
 pub struct FfmpegCommand {
     /// The full command string (for display/copy)
@@ -32,10 +40,7 @@ pub fn build_ffmpeg_command(
     trim_start: f64,
     trim_end: f64,
     duration: f64,
-    video_width: u32,
-    video_height: u32,
-    preview_width: f32,
-    preview_height: f32,
+    dimen: &VideoDimensions,
 ) -> FfmpegCommand {
     // display_args: for copy-paste (with quotes around paths)
     // masked_args: for display with placeholders
@@ -85,14 +90,14 @@ pub fn build_ffmpeg_command(
 
     if let Some(crop_sel) = crop {
         // Scale crop coordinates from preview space to original video dimensions
-        let scale_x = if preview_width > 0.0 {
-            video_width as f32 / preview_width
+        let scale_x = if dimen.preview_width > 0.0 {
+            dimen.video_width as f32 / dimen.preview_width
         } else {
             1.0
         };
 
-        let scale_y = if preview_height > 0.0 {
-            video_height as f32 / preview_height
+        let scale_y = if dimen.preview_height > 0.0 {
+            dimen.video_height as f32 / dimen.preview_height
         } else {
             1.0
         };

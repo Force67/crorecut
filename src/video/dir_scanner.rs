@@ -30,10 +30,10 @@ fn scan_videos_directory_blocking(dir: PathBuf) -> Result<Vec<VideoMetadata>, St
 
             for subentry in subentries.filter_map(|e| e.ok()) {
                 let subpath = subentry.path();
-                if subpath.is_file() {
-                    if let Some(meta) = extract_video_metadata(subpath)? {
-                        videos.push(meta);
-                    }
+                if subpath.is_file()
+                    && let Some(meta) = extract_video_metadata(subpath)?
+                {
+                    videos.push(meta);
                 }
             }
         }
