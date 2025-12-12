@@ -5,6 +5,7 @@ use crate::video::{VideoDimensions, build_ffmpeg_command};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, rich_text, row, span, stack, svg, text,
+    text_input,
 };
 use iced::{Alignment, Element, Font, Length};
 
@@ -329,6 +330,7 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
 
     // Label with inline copy and run links
     let link_color = iced::Color::from_rgb(0.4, 0.7, 1.0);
+    let gray = iced::Color::from_rgb(0.6, 0.6, 0.6);
 
     let copy_link = button(text("Copy").size(12).color(link_color))
         .on_press(Message::CopyCommand(ffmpeg_cmd.full.clone()))
@@ -340,10 +342,7 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         });
 
     let run_link = button(text("Run").size(12).color(link_color))
-        .on_press(Message::RunCommand {
-            args: ffmpeg_cmd.args,
-            output_path: ffmpeg_cmd.output_path,
-        })
+        .on_press(Message::RunCommand)
         .padding(0)
         .style(|_theme, _status| button::Style {
             background: None,
@@ -351,15 +350,25 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
             ..Default::default()
         });
 
-    let gray = iced::Color::from_rgb(0.6, 0.6, 0.6);
+    // Target size input for compression (optional)
+    let size_input = text_input("", &player_state.target_size_mb)
+        .on_input(Message::TargetSizeChanged)
+        .width(Length::Fixed(50.0))
+        .padding(4)
+        .size(12);
+
     let command_header = row![
         text("FFmpeg Command (").size(12).color(gray),
         copy_link,
         text(" or ").size(12).color(gray),
         run_link,
-        text("):").size(12).color(gray),
+        text(")").size(12).color(gray),
+        container(row![].width(Length::Fill)), // Spacer
+        text("Target: ").size(12).color(gray),
+        size_input,
+        text("MB").size(12).color(gray),
     ]
-    .spacing(0)
+    // .spacing(4)
     .align_y(Alignment::Center);
 
     // Build rich text - show full command when hovered, masked when not

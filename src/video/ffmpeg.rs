@@ -172,6 +172,51 @@ pub async fn get_video_dimensions(video_path: PathBuf) -> Result<(u32, u32), Fra
     Ok((width, height))
 }
 
+/// Get the audio bitrate of a video file in bits per second.
+/// Returns None if the video has no audio stream.
+pub async fn get_audio_bitrate(video_path: PathBuf) -> Result<Option<u64>, FrameExtractionError> {
+    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
+        return Err(FrameExtractionError::VideoNotFound(video_path));
+    }
+
+    let mut command = Command::new("ffprobe");
+    command
+        .arg("-v")
+        .arg("error")
+        .arg("-select_streams")
+        .arg("a:0")
+        .arg("-show_entries")
+        .arg("stream=bit_rate")
+        .arg("-of")
+        .arg("csv=p=0")
+        .arg(&video_path);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let output = command
+        .output()
+        .await
+        .map_err(|_| FrameExtractionError::FFmpegNotFound)?;
+
+    if !output.status.success() {
+        // No audio stream or other error - return None
+        return Ok(None);
+    }
+
+    let bitrate_str = String::from_utf8_lossy(&output.stdout);
+    let trimmed = bitrate_str.trim();
+
+    if trimmed.is_empty() || trimmed == "N/A" {
+        return Ok(None);
+    }
+
+    match trimmed.parse::<u64>() {
+        Ok(bitrate) => Ok(Some(bitrate)),
+        Err(_) => Ok(None), // Couldn't parse - treat as no audio
+    }
+}
+
 /// Execute an FFmpeg command with the given arguments.
 pub async fn run_ffmpeg_command(args: &[String]) -> Result<(), FfmpegCommandError> {
     let mut cmd = Command::new("ffmpeg");
@@ -191,6 +236,71 @@ pub async fn run_ffmpeg_command(args: &[String]) -> Result<(), FfmpegCommandErro
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(FfmpegCommandError::CommandFailed(stderr.to_string()));
+    }
+
+    Ok(())
+}
+
+/// Execute a two-pass FFmpeg compression.
+/// Runs pass 1, then pass 2, and cleans up temporary log files.
+pub async fn run_two_pass_compression(
+    pass1_args: Vec<String>,
+    pass2_args: Vec<String>,
+    working_dir: PathBuf,
+) -> Result<(), FfmpegCommandError> {
+    // Pass 1: Analysis pass
+    let mut cmd1 = Command::new("ffmpeg");
+    cmd1.args(&pass1_args);
+    cmd1.current_dir(&working_dir);
+
+    #[cfg(windows)]
+    cmd1.creation_flags(CREATE_NO_WINDOW);
+
+    cmd1.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let output1 = cmd1
+        .output()
+        .await
+        .map_err(|_| FfmpegCommandError::FFmpegNotFound)?;
+
+    if !output1.status.success() {
+        let stderr = String::from_utf8_lossy(&output1.stderr);
+        return Err(FfmpegCommandError::CommandFailed(format!(
+            "Pass 1 failed: {}",
+            stderr
+        )));
+    }
+
+    // Pass 2: Actual encoding
+    let mut cmd2 = Command::new("ffmpeg");
+    cmd2.args(&pass2_args);
+    cmd2.current_dir(&working_dir);
+
+    #[cfg(windows)]
+    cmd2.creation_flags(CREATE_NO_WINDOW);
+
+    cmd2.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let output2 = cmd2
+        .output()
+        .await
+        .map_err(|_| FfmpegCommandError::FFmpegNotFound)?;
+
+    // Clean up pass log files (ffmpeg2pass-0.log, ffmpeg2pass-0.log.mbtree)
+    let log_files = ["ffmpeg2pass-0.log", "ffmpeg2pass-0.log.mbtree"];
+    for log_file in &log_files {
+        let log_path = working_dir.join(log_file);
+        let _ = tokio::fs::remove_file(log_path).await; // Ignore errors
+    }
+
+    if !output2.status.success() {
+        let stderr = String::from_utf8_lossy(&output2.stderr);
+        return Err(FfmpegCommandError::CommandFailed(format!(
+            "Pass 2 failed: {}",
+            stderr
+        )));
     }
 
     Ok(())

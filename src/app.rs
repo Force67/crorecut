@@ -96,6 +96,9 @@ pub struct PlayerViewState {
 
     // Command preview hover state
     pub is_command_hovered: bool,
+
+    // Target size for compression (empty = no compression)
+    pub target_size_mb: String,
 }
 
 impl PlayerViewState {
@@ -183,15 +186,13 @@ pub enum Message {
 
     // Command display
     CopyCommand(String),
-    RunCommand {
-        args: Vec<String>,
-        output_path: PathBuf,
-    },
+    RunCommand,
     CommandCompleted(Result<PathBuf, String>),
     OpenFile(PathBuf),
     DeleteFile(PathBuf),
     OpenParentDir(PathBuf),
     CommandPreviewHovered(bool),
+    TargetSizeChanged(String),
 }
 
 impl App {
@@ -558,30 +559,123 @@ impl App {
 
             Message::CopyCommand(cmd) => iced::clipboard::write(cmd),
 
-            Message::RunCommand { args, output_path } => {
+            Message::RunCommand => {
                 if let Some(ref mut player_state) = self.player_state {
                     player_state.render_status = RenderStatus::Rendering;
+
+                    let video_path = player_state.video_path.clone();
+                    let crop_selection = player_state.crop_selection;
+                    let trim_start = player_state.trim_start;
+                    let trim_end = player_state.trim_end;
+                    let duration = player_state.duration;
+                    let video_width = player_state.video_width;
+                    let video_height = player_state.video_height;
+                    let preview_width = player_state.preview_width;
+                    let preview_height = player_state.preview_height;
+                    let target_size_str = player_state.target_size_mb.clone();
+
+                    // Check if compression is enabled
+                    let target_size: Option<f64> = target_size_str
+                        .trim()
+                        .parse()
+                        .ok()
+                        .filter(|&s: &f64| s > 0.0);
+
+                    if let Some(target_size_mb) = target_size {
+                        // Two-pass mode with compression
+                        Task::perform(
+                            async move {
+                                // Get audio bitrate
+                                let audio_bitrate =
+                                    crate::video::get_audio_bitrate(video_path.clone())
+                                        .await
+                                        .map_err(|e| e.to_string())?;
+
+                                let dimen = crate::video::VideoDimensions {
+                                    video_width,
+                                    video_height,
+                                    preview_width,
+                                    preview_height,
+                                };
+
+                                let params = crate::video::CompressionParams {
+                                    target_size_mb,
+                                    duration_sec: duration,
+                                    audio_bitrate_bps: audio_bitrate,
+                                };
+
+                                let cmd = crate::video::build_compression_command(
+                                    &video_path,
+                                    &params,
+                                    crop_selection.as_ref(),
+                                    trim_start,
+                                    trim_end,
+                                    &dimen,
+                                )
+                                .map_err(|e| e.to_string())?;
+
+                                let working_dir = video_path
+                                    .parent()
+                                    .map(|p| p.to_path_buf())
+                                    .unwrap_or_else(|| PathBuf::from("."));
+
+                                crate::video::run_two_pass_compression(
+                                    cmd.pass1_args,
+                                    cmd.pass2_args,
+                                    working_dir,
+                                )
+                                .await
+                                .map_err(|e| e.to_string())?;
+
+                                Ok(cmd.output_path)
+                            },
+                            Message::CommandCompleted,
+                        )
+                    } else {
+                        // Single-pass mode (no compression)
+                        let dimen = crate::video::VideoDimensions {
+                            video_width,
+                            video_height,
+                            preview_width,
+                            preview_height,
+                        };
+
+                        let ffmpeg_cmd = crate::video::build_ffmpeg_command(
+                            &video_path,
+                            crop_selection.as_ref(),
+                            trim_start,
+                            trim_end,
+                            duration,
+                            &dimen,
+                        );
+
+                        let args = ffmpeg_cmd.args;
+                        let output_path = ffmpeg_cmd.output_path;
+
+                        Task::perform(
+                            async move {
+                                crate::video::run_ffmpeg_command(&args).await?;
+                                Ok(output_path)
+                            },
+                            |result: Result<PathBuf, crate::video::error::FfmpegCommandError>| {
+                                Message::CommandCompleted(result.map_err(|e| e.to_string()))
+                            },
+                        )
+                    }
+                } else {
+                    Task::none()
                 }
-                Task::perform(
-                    async move {
-                        crate::video::run_ffmpeg_command(&args).await?;
-                        Ok(output_path)
-                    },
-                    |result: Result<PathBuf, crate::video::error::FfmpegCommandError>| {
-                        Message::CommandCompleted(result.map_err(|e| e.to_string()))
-                    },
-                )
             }
 
             Message::CommandCompleted(result) => {
                 if let Some(ref mut player_state) = self.player_state {
                     match result {
                         Ok(output_path) => {
-                            log::info!("FFmpeg command completed successfully");
+                            log::info!("Command completed successfully");
                             player_state.render_status = RenderStatus::Completed(output_path);
                         }
                         Err(ref error_msg) => {
-                            log::error!("FFmpeg command failed: {error_msg}");
+                            log::error!("Command failed: {error_msg}");
                             player_state.render_status = RenderStatus::Failed(error_msg.clone());
                         }
                     }
@@ -628,6 +722,13 @@ impl App {
                 }
                 Task::none()
             }
+
+            Message::TargetSizeChanged(value) => {
+                if let Some(ref mut player_state) = self.player_state {
+                    player_state.target_size_mb = value;
+                }
+                Task::none()
+            }
         }
     }
 
@@ -655,6 +756,7 @@ impl App {
             trim_end: 0.0, // Will be set when duration is received
             render_status: RenderStatus::Idle,
             is_command_hovered: false,
+            target_size_mb: String::new(),
         });
 
         // Switch to editor screen

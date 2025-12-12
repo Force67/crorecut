@@ -5,8 +5,13 @@ pub mod ffmpeg;
 pub mod frame_cache;
 pub mod metadata;
 
-pub use command_builder::{VideoDimensions, build_ffmpeg_command};
+pub use command_builder::{
+    CompressionParams, VideoDimensions, build_compression_command, build_ffmpeg_command,
+};
 pub use dir_scanner::scan_videos_directory;
-pub use ffmpeg::{extract_frame, get_video_dimensions, get_video_duration_sec, run_ffmpeg_command};
+pub use ffmpeg::{
+    extract_frame, get_audio_bitrate, get_video_dimensions, get_video_duration_sec,
+    run_ffmpeg_command, run_two_pass_compression,
+};
 pub use frame_cache::FrameCache;
 pub use metadata::VideoMetadata;
