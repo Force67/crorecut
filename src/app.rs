@@ -67,7 +67,6 @@ pub struct PlayerViewState {
     pub video_path: PathBuf,
     pub duration: f64,
 
-    // Video properties
     pub video_width: u32,
     pub video_height: u32,
     pub preview_width: f32,
@@ -87,18 +86,15 @@ pub struct PlayerViewState {
     pub mouse_position: (f32, f32),
     pub canvas_bounds: (f32, f32), // (width, height) of the canvas container
 
-    // Trim state
     pub trim_start: f64,
     pub trim_end: f64,
 
-    // Render state
     pub render_status: RenderStatus,
 
-    // Command preview hover state
     pub is_command_hovered: bool,
 
-    // Target size for compression (empty = no compression)
-    pub target_size_mb: String,
+    pub video_file_size_mb: f64,
+    pub target_size_mb: String, // Target size for compression
 }
 
 impl PlayerViewState {
@@ -734,6 +730,10 @@ impl App {
 
     /// Handle video selection - initialize player state and load video
     fn handle_video_selected(&mut self, video_path: PathBuf) -> Task<Message> {
+        let file_size_mb = std::fs::metadata(&video_path)
+            .map(|m| m.len() as f64 / (1024.0 * 1024.0))
+            .unwrap_or(0.0);
+
         // Initialize player state
         self.player_state = Some(PlayerViewState {
             frame_handle: None,
@@ -757,6 +757,7 @@ impl App {
             render_status: RenderStatus::Idle,
             is_command_hovered: false,
             target_size_mb: String::new(),
+            video_file_size_mb: file_size_mb,
         });
 
         // Switch to editor screen

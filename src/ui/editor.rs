@@ -364,9 +364,11 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         run_link,
         text(")").size(12).color(gray),
         container(row![].width(Length::Fill)), // Spacer
-        text("Target: ").size(12).color(gray),
+        text("Compress to: ").size(12).color(gray),
         size_input,
-        text("MB").size(12).color(gray),
+        text(format!(" MB (source: {:.1} MB)", player_state.video_file_size_mb))
+            .size(12)
+            .color(gray),
     ]
     // .spacing(4)
     .align_y(Alignment::Center);
@@ -437,7 +439,12 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
     let status_row: Element<'_, Message> = match &player_state.render_status {
         RenderStatus::Idle => row![].into(),
         RenderStatus::Rendering => {
-            row![text("Rendering...").size(12).color(iced::Color::WHITE),].into()
+            let msg = if player_state.target_size_mb.is_empty() {
+                "Rendering..."
+            } else {
+                "Rendering and compressing..."
+            };
+            row![text(msg).size(12).color(iced::Color::WHITE),].into()
         }
         RenderStatus::Completed(output_path) => {
             let open_link = button(text("Open").size(12).color(link_color))
