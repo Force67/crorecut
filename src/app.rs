@@ -717,12 +717,26 @@ impl App {
             }
 
             Message::OpenParentDir(filepath) => {
-                if let Some(parent) = filepath.parent() {
-                    if let Err(e) = open::that_detached(parent) {
-                        log::error!("Failed to open parent directory: {e}");
+                #[cfg(windows)]
+                {
+                    // Use explorer.exe /select, to open folder and highlight the file
+                    if let Err(e) = std::process::Command::new("explorer.exe")
+                        .arg("/select,")
+                        .arg(&filepath)
+                        .spawn()
+                    {
+                        log::error!("Failed to open Explorer with file selected: {e}");
                     }
-                } else {
-                    log::warn!("Path has no parent directory: {}", filepath.display());
+                }
+                #[cfg(not(windows))]
+                {
+                    if let Some(parent) = filepath.parent() {
+                        if let Err(e) = open::that_detached(parent) {
+                            log::error!("Failed to open parent directory: {e}");
+                        }
+                    } else {
+                        log::warn!("Path has no parent directory: {}", filepath.display());
+                    }
                 }
                 Task::none()
             }
