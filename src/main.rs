@@ -6,7 +6,9 @@
 
 mod app;
 mod config;
+mod handlers;
 mod icons;
+mod state;
 mod ui;
 mod utils;
 mod video;
