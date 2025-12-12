@@ -24,8 +24,13 @@ fn main() -> iced::Result {
 
     iced::application(App::new, App::update, App::view)
         .title(App::title)
+        .settings(iced::Settings {
+            vsync: false,
+            ..Default::default()
+        })
         .window(iced::window::Settings {
             size: iced::Size::new(960.0, 600.0),
+            min_size: Some(iced::Size::new(800.0, 540.0)),
             icon: Some(icon),
             ..Default::default()
         })
