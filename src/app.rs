@@ -153,7 +153,8 @@ pub enum Message {
     GenerateNextThumbnail,
     ThumbnailGenerated {
         video_path: PathBuf,
-        result: Result<Vec<u8>, String>,
+        thumbnail_result: Result<Vec<u8>, String>,
+        duration_result: Result<f64, String>,
     },
     VideoSelected(PathBuf),
 
@@ -229,6 +230,7 @@ impl App {
                             .map(|metadata| VideoItem {
                                 metadata,
                                 thumbnail_state: ThumbnailState::Pending,
+                                duration: None,
                             })
                             .collect();
 
@@ -279,17 +281,25 @@ impl App {
 
                     self.grid_state.thumbnails_in_progress += 1;
 
-                    let path_for_async = video_path.clone();
+                    let path_for_thumbnail = video_path.clone();
+                    let path_for_duration = video_path.clone();
                     let path_for_message = video_path;
                     Task::perform(
                         async move {
-                            crate::video::extract_frame(path_for_async, 1.0)
-                                .await
-                                .map_err(|e| e.to_string())
+                            let thumbnail_result =
+                                crate::video::extract_frame(path_for_thumbnail, 1.0)
+                                    .await
+                                    .map_err(|e| e.to_string());
+                            let duration_result =
+                                crate::video::get_video_duration_sec(path_for_duration)
+                                    .await
+                                    .map_err(|e| e.to_string());
+                            (thumbnail_result, duration_result)
                         },
-                        move |result| Message::ThumbnailGenerated {
+                        move |(thumbnail_result, duration_result)| Message::ThumbnailGenerated {
                             video_path: path_for_message.clone(),
-                            result,
+                            thumbnail_result,
+                            duration_result,
                         },
                     )
                 } else {
@@ -297,7 +307,11 @@ impl App {
                 }
             }
 
-            Message::ThumbnailGenerated { video_path, result } => {
+            Message::ThumbnailGenerated {
+                video_path,
+                thumbnail_result,
+                duration_result,
+            } => {
                 use crate::ui::grid::ThumbnailState;
 
                 if let Some(item) = self
@@ -306,12 +320,13 @@ impl App {
                     .iter_mut()
                     .find(|v| v.metadata.path == video_path)
                 {
-                    item.thumbnail_state = match result {
+                    item.thumbnail_state = match thumbnail_result {
                         Ok(bytes) => {
                             ThumbnailState::Ready(iced::advanced::image::Handle::from_bytes(bytes))
                         }
                         Err(error_msg) => ThumbnailState::Failed(error_msg),
                     };
+                    item.duration = duration_result.ok();
                 }
 
                 self.grid_state.thumbnails_in_progress -= 1;

@@ -83,13 +83,7 @@ impl ImageTransform {
     }
 }
 
-/// Helper function to format timestamps as HH:MM:SS
-fn format_timestamp(seconds: f64) -> String {
-    let hours = (seconds / 3600.0).floor() as u32;
-    let minutes = ((seconds % 3600.0) / 60.0).floor() as u32;
-    let secs = (seconds % 60.0).floor() as u32;
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
-}
+use crate::utils::format_timestamp;
 
 /// Check if coordinates are on a resize handle of the selection
 pub fn get_resize_handle(x: f32, y: f32, selection: &CropSelection) -> Option<ResizeHandle> {
@@ -304,7 +298,7 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         // Combined range slider with trim handles and playhead
         timeline_slider,
         // Time labels
-        row![current_time, total_time]
+        row![current_time, text("/").size(14), total_time]
             .spacing(12)
             .align_y(Alignment::Center),
     ]
@@ -366,9 +360,12 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         container(row![].width(Length::Fill)), // Spacer
         text("Compress to: ").size(12).color(gray),
         size_input,
-        text(format!(" MB (source: {:.1} MB)", player_state.video_file_size_mb))
-            .size(12)
-            .color(gray),
+        text(format!(
+            " MB (source: {:.1} MB)",
+            player_state.video_file_size_mb
+        ))
+        .size(12)
+        .color(gray),
     ]
     // .spacing(4)
     .align_y(Alignment::Center);

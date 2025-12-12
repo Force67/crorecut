@@ -7,6 +7,7 @@ use tokio::process::Command;
 use std::os::windows::process::CommandExt;
 
 use super::error::{FfmpegCommandError, FrameExtractionError};
+use crate::utils::format_timestamp_precise;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -20,11 +21,7 @@ pub async fn extract_frame(
         return Err(FrameExtractionError::VideoNotFound(video_path));
     }
 
-    // Format timestamp as HH:MM:SS.mmm
-    let hours = (timestamp_seconds / 3600.0).floor() as u32;
-    let minutes = ((timestamp_seconds % 3600.0) / 60.0).floor() as u32;
-    let seconds = timestamp_seconds % 60.0;
-    let timestamp_str = format!("{:02}:{:02}:{:06.3}", hours, minutes, seconds);
+    let timestamp_str = format_timestamp_precise(timestamp_seconds);
 
     // -ss before -i enables faster keyframe seeking
     let mut command = Command::new("ffmpeg");

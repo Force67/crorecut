@@ -23,21 +23,15 @@ pub struct FfmpegCommand {
     pub output_path: PathBuf,
 }
 
-/// Format seconds as HH:MM:SS.mmm for FFmpeg
-fn format_timestamp(seconds: f64) -> String {
-    let hours = (seconds / 3600.0).floor() as u32;
-    let minutes = ((seconds % 3600.0) / 60.0).floor() as u32;
-    let secs = seconds % 60.0;
-    format!("{:02}:{:02}:{:06.3}", hours, minutes, secs)
-}
+use crate::utils::format_timestamp_precise;
 
 fn is_trimming(trim_start: f64, trim_end: f64, duration: f64) -> bool {
     trim_start > 0.01 || (duration > 0.0 && trim_end < duration - 0.01)
 }
 
 struct TrimArgs {
-    before_input: Vec<String>,  // -ss args
-    after_input: Vec<String>,   // -t args
+    before_input: Vec<String>, // -ss args
+    after_input: Vec<String>,  // -t args
 }
 
 fn build_trim_args(trim_start: f64, trim_end: f64, duration: f64) -> TrimArgs {
@@ -47,12 +41,12 @@ fn build_trim_args(trim_start: f64, trim_end: f64, duration: f64) -> TrimArgs {
     if is_trimming(trim_start, trim_end, duration) {
         if trim_start > 0.01 {
             before_input.push("-ss".to_string());
-            before_input.push(format_timestamp(trim_start));
+            before_input.push(format_timestamp_precise(trim_start));
         }
 
         let trim_duration = trim_end - trim_start;
         after_input.push("-t".to_string());
-        after_input.push(format_timestamp(trim_duration));
+        after_input.push(format_timestamp_precise(trim_duration));
     }
 
     TrimArgs {

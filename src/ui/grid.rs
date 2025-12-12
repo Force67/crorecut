@@ -1,7 +1,9 @@
 use crate::app::Message;
 use crate::video::VideoMetadata;
-use iced::widget::{button, column, container, grid, image, scrollable, text};
+use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
 use iced::{Alignment, Border, Element, Length};
+
+use crate::utils::format_duration_short;
 
 #[derive(Debug, Clone)]
 pub enum ThumbnailState {
@@ -15,6 +17,7 @@ pub enum ThumbnailState {
 pub struct VideoItem {
     pub metadata: VideoMetadata,
     pub thumbnail_state: ThumbnailState,
+    pub duration: Option<f64>,
 }
 
 pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
@@ -43,14 +46,49 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                 ..Default::default()
             }),
 
-        ThumbnailState::Ready(handle) => container(
-            image(handle.clone())
+        ThumbnailState::Ready(handle) => {
+            let thumbnail_image = image(handle.clone())
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .content_fit(iced::ContentFit::Cover),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill),
+                .content_fit(iced::ContentFit::Cover);
+
+            // Duration badge overlay (bottom-right corner)
+            let duration_badge: Element<'_, Message> = if let Some(duration) = video.duration {
+                container(
+                    container(
+                        text(format_duration_short(duration))
+                            .size(11)
+                            .color(iced::Color::WHITE),
+                    )
+                    .padding([2, 4])
+                    .style(|_theme| container::Style {
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(
+                            0.0, 0.0, 0.0, 0.7,
+                        ))),
+                        border: Border {
+                            radius: 2.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Alignment::End)
+                .align_y(Alignment::End)
+                .padding(4)
+                .into()
+            } else {
+                container(row![])
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            };
+
+            container(stack![thumbnail_image, duration_badge])
+                .width(Length::Fill)
+                .height(Length::Fill)
+        }
 
         ThumbnailState::Failed(error) => container(
             column![text("X").size(40), text(error).size(10)]
