@@ -19,3 +19,9 @@ winres = "0.1"
 
 [patch.crates-io]
 iced.git = "https://github.com/iced-rs/iced.git"
+
+[profile.release]
+strip = true
+opt-level = 3
+panic = "abort"
+lto = true

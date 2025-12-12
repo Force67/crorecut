@@ -71,6 +71,21 @@ This project uses iced's Elm-inspired architecture:
 - **view()**: Pure function that renders UI based on current state, returns `Element<'_, Message>`
 - **Entry point**: Uses `iced::application(boot, update, view).run()` builder pattern
 
+The codebase follows a clean separation of concerns:
+
+**`src/app.rs`** - Core application scaffolding
+- Defines the `App` struct and `Message` enum
+- Contains the `update()` method that **delegates** to handler methods
+- Minimal business logic - acts as a dispatcher
+- Re-exports state types for convenience
+
+**`src/state/`** - Application state modules
+- Each state module contains related types and default implementations
+
+**`src/handlers/`** - Message handling logic
+- Handler methods are implemented as `impl App { pub(crate) fn handle_*(...) -> Task<Message> }`
+- Create new handler files when adding a distinct feature area (not just for every new handler)
+
 ### Multi-Screen Architecture
 
 The application uses a `Screen` enum to manage different views (Home, Editor, Settings, etc.). The `view()` method routes to screen-specific view functions based on `current_screen`.

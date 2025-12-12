@@ -452,6 +452,14 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
                     text_color: iced::Color::from_rgb(0.4, 0.7, 1.0),
                     ..Default::default()
                 });
+            let open_parent_dir_link = button(text("Open Folder").size(12).color(link_color))
+                .on_press(Message::OpenParentDir(output_path.clone()))
+                .padding(0)
+                .style(|_theme, _status| button::Style {
+                    background: None,
+                    text_color: iced::Color::from_rgb(0.4, 0.7, 1.0),
+                    ..Default::default()
+                });
             let delete_link = button(text("Delete").size(12).color(link_color))
                 .on_press(Message::DeleteFile(output_path.clone()))
                 .padding(0)
@@ -461,9 +469,12 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
                     ..Default::default()
                 });
             let green = iced::Color::from_rgb(0.4, 0.9, 0.4);
+
             row![
                 text("Done! (").size(12).color(green),
                 open_link,
+                text(", ").size(12).color(green),
+                open_parent_dir_link,
                 text(" or ").size(12).color(green),
                 delete_link,
                 text(")").size(12).color(green),
