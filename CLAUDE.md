@@ -9,7 +9,8 @@ Crorecut is a minimalistic video editing tool built with Rust and iced-rs, power
 ## Tech Stack
 
 - **Language**: Rust
-- **GUI Framework**: iced 0.14.0-dev (from "master" branch on GitHub)
+- **GUI Framework**: iced 0.15.0-dev (from "master" branch on GitHub)
+  - **Enabled features**: `tokio`, `advanced`, `image`, `canvas`, `svg`
 - **Video Processing**: FFmpeg (via command-line subprocess execution)
 - **Async Runtime**: tokio for subprocess execution and async operations
 - **Configuration**: TOML with serde serialization
@@ -41,13 +42,13 @@ cargo clippy
 
 ## iced Documentation & Source Code Lookup
 
-**IMPORTANT**: This project uses `iced` version `0.14.0-dev` from the HEAD of the GitHub repository, not a stable release.
+**IMPORTANT**: This project uses `iced` version `0.15.0-dev` from the HEAD of the GitHub repository, not a stable release.
 
 ### Documentation Preferences
 
 When looking up iced documentation, **ALWAYS** prefer:
-- **Documentation**: `https://docs.iced.rs/iced` (NOT `https://docs.rs/iced`)
-- **Search**: `https://docs.iced.rs/iced/?search=<query>`
+- **In-development documentation**: `https://docs.iced.rs/iced` (NOT `https://docs.rs/iced`)
+- **All items reference page (list of all functions, structs, macros, etc.)**: `https://docs.iced.rs/iced/all.html` (useful for finding specific items by name)
 
 The docs.iced.rs site reflects the latest development version, while docs.rs only has stable releases.
 

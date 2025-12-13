@@ -1,4 +1,5 @@
 use crate::app::Message;
+use crate::state::grid_scrollable_id;
 use crate::video::VideoMetadata;
 use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
 use iced::{Alignment, Border, Element, Length};
@@ -173,5 +174,8 @@ pub fn grid_view(videos: &[VideoItem]) -> Element<'_, Message> {
         .spacing(12)
         .height(grid::Sizing::AspectRatio(1.35)); // Slightly taller than 16:9 to fit text
 
-    scrollable(container(video_grid).padding(20).width(Length::Fill)).into()
+    scrollable(container(video_grid).padding(20).width(Length::Fill))
+        .id(grid_scrollable_id())
+        .on_scroll(Message::GridScrollChanged)
+        .into()
 }

@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
+use iced::widget::scrollable;
 use iced::{Element, Task};
 
-use crate::state::{GridViewState, ScanStatus};
+use crate::state::{GridViewState, ScanStatus, grid_scrollable_id};
 use crate::ui::editor::editor_view;
 use crate::video::VideoMetadata;
 
@@ -52,6 +53,7 @@ pub enum Message {
         duration_result: Result<f64, String>,
     },
     VideoSelected(PathBuf),
+    GridScrollChanged(scrollable::Viewport),
 
     // Player View
     FrameExtracted {
@@ -102,8 +104,18 @@ impl App {
         match message {
             // Navigation
             Message::NavigateTo(screen) => {
+                let restore_scroll = matches!(screen, Screen::Home);
+
                 self.current_screen = screen;
-                Task::none()
+
+                if restore_scroll {
+                    iced::widget::operation::snap_to(
+                        grid_scrollable_id(),
+                        self.grid_state.scroll_offset,
+                    )
+                } else {
+                    Task::none()
+                }
             }
 
             // Grid handlers
@@ -116,6 +128,10 @@ impl App {
                 duration_result,
             } => self.handle_thumbnail_generated(video_path, thumbnail_result, duration_result),
             Message::VideoSelected(path) => self.handle_video_selected(path),
+            Message::GridScrollChanged(viewport) => {
+                self.grid_state.scroll_offset = viewport.relative_offset();
+                Task::none()
+            }
 
             // Player handlers
             Message::DurationReceived(result) => self.handle_duration_received(result),
