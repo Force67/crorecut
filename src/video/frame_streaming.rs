@@ -220,7 +220,7 @@ fn create_frame_stream() -> impl iced::futures::Stream<Item = crate::app::Messag
                             break;
                         }
 
-                        tokio::time::sleep(std::time::Duration::from_millis(33)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
                     }
                     Ok(None) => {
                         log::info!("Frame streaming reached end of video");
