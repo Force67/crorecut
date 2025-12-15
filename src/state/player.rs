@@ -31,9 +31,6 @@ pub struct PlayerViewState {
     pub last_extraction_request_id: u64,
     pub pending_timestamp: Option<f64>,
 
-    // Frame cache
-    pub frame_cache: crate::video::FrameCache,
-
     // Crop selection state (in preview image space, not canvas space)
     pub crop_selection: Option<CropSelection>,
     pub selection_state: SelectionState,
@@ -49,6 +46,9 @@ pub struct PlayerViewState {
 
     pub video_file_size_mb: f64,
     pub target_size_mb: String, // Target size for compression
+
+    // Streaming playback (experimental)
+    pub is_streaming: bool,
 }
 
 impl PlayerViewState {

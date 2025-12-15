@@ -2,7 +2,7 @@ pub mod command_builder;
 pub mod dir_scanner;
 pub mod error;
 pub mod ffmpeg;
-pub mod frame_cache;
+pub mod frame_streaming;
 pub mod metadata;
 
 pub use command_builder::{
@@ -13,5 +13,4 @@ pub use ffmpeg::{
     extract_frame, get_audio_bitrate, get_video_dimensions, get_video_duration_sec,
     run_ffmpeg_command, run_two_pass_compression,
 };
-pub use frame_cache::FrameCache;
 pub use metadata::VideoMetadata;

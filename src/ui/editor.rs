@@ -281,6 +281,36 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         .size(14)
         .color(iced::Color::from_rgb(0.7, 0.7, 0.7));
 
+    // Play/pause button
+    let (play_pause_icon, play_pause_msg) = if player_state.is_streaming {
+        (crate::icons::PAUSE_SVG, Message::StopStreamingFrames)
+    } else {
+        (crate::icons::PLAY_SVG, Message::StartStreamingFrames)
+    };
+    let play_pause_svg = svg::Handle::from_memory(play_pause_icon);
+    let play_pause_button = button(svg(play_pause_svg).width(16).height(16).style(
+        |_theme, _status| svg::Style {
+            color: Some(iced::Color::WHITE),
+        },
+    ))
+    .on_press(play_pause_msg)
+    .padding(8)
+    .style(|_theme, status| {
+        let background = match status {
+            button::Status::Hovered => iced::color!(0x414449),
+            button::Status::Pressed => iced::color!(0x292B2D),
+            _ => iced::color!(0x303030),
+        };
+        button::Style {
+            background: Some(iced::Background::Color(background)),
+            border: iced::Border {
+                radius: 6.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    });
+
     // Combined range slider with playhead
     let timeline_slider = if player_state.duration > 0.0 {
         range_slider(
@@ -297,10 +327,15 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
     let timeline_controls = column![
         // Combined range slider with trim handles and playhead
         timeline_slider,
-        // Time labels
-        row![current_time, text("/").size(14), total_time]
-            .spacing(12)
-            .align_y(Alignment::Center),
+        // Play button and time labels
+        row![
+            play_pause_button,
+            current_time,
+            text("/").size(14),
+            total_time
+        ]
+        .spacing(12)
+        .align_y(Alignment::Center),
     ]
     .spacing(8)
     .padding(20)

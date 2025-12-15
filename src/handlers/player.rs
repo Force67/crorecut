@@ -63,15 +63,11 @@ impl App {
 
             match result {
                 Ok(frame_bytes) => {
-                    // Cache the frame before converting to Handle
-                    player_state.frame_cache.insert(
-                        player_state.video_path.clone(),
-                        player_state.timestamp,
-                        frame_bytes.clone(),
-                    );
-
-                    player_state.frame_handle =
-                        Some(iced::advanced::image::Handle::from_bytes(frame_bytes));
+                    player_state.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
+                        player_state.preview_width as u32,
+                        player_state.preview_height as u32,
+                        frame_bytes,
+                    ));
                 }
                 Err(error_msg) => {
                     log::error!("Frame extraction failed: {error_msg}");
@@ -94,19 +90,6 @@ impl App {
             // Update timestamp immediately for responsive UI
             player_state.timestamp = new_timestamp;
 
-            // Check cache first
-            if let Some(cached_bytes) = player_state
-                .frame_cache
-                .get(&player_state.video_path, new_timestamp)
-            {
-                // Cache hit! Update frame immediately without spawning FFmpeg
-                player_state.frame_handle =
-                    Some(iced::advanced::image::Handle::from_bytes(cached_bytes));
-                player_state.pending_timestamp = None;
-                return Task::none();
-            }
-
-            // Cache miss - check if extraction is already in progress
             if player_state.is_extracting {
                 // Extraction in progress - store as pending
                 player_state.pending_timestamp = Some(new_timestamp);
@@ -135,8 +118,11 @@ impl App {
     pub(crate) fn handle_trim_start_changed(&mut self, value: f64) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state {
             player_state.trim_start = value.min(player_state.trim_end - 0.1).max(0.0);
+            // Send `SliderChanged` so that user can instantly see the preview frame
+            Task::done(Message::SliderChanged(player_state.trim_start))
+        } else {
+            Task::none()
         }
-        Task::none()
     }
 
     pub(crate) fn handle_trim_end_changed(&mut self, value: f64) -> Task<Message> {
@@ -144,6 +130,52 @@ impl App {
             player_state.trim_end = value
                 .max(player_state.trim_start + 0.1)
                 .min(player_state.duration);
+            // Send `SliderChanged` so that user can instantly see the preview frame
+            Task::done(Message::SliderChanged(player_state.trim_end))
+        } else {
+            Task::none()
+        }
+    }
+
+    // Streaming handlers (experimental)
+
+    pub(crate) fn handle_start_streaming(&mut self) -> Task<Message> {
+        if let Some(ref mut player_state) = self.player_state
+            && !player_state.is_streaming
+        {
+            log::info!(
+                "Starting frame streaming at timestamp {}",
+                player_state.timestamp
+            );
+            player_state.is_streaming = true;
+        }
+        Task::none()
+    }
+
+    pub(crate) fn handle_stop_streaming(&mut self) -> Task<Message> {
+        if let Some(ref mut player_state) = self.player_state
+            && player_state.is_streaming
+        {
+            log::info!("Stopping frame streaming");
+            player_state.is_streaming = false;
+        }
+        Task::none()
+    }
+
+    pub(crate) fn handle_streamed_frame(
+        &mut self,
+        frame_bytes: Vec<u8>,
+        timestamp: f64,
+    ) -> Task<Message> {
+        if let Some(ref mut player_state) = self.player_state
+            && player_state.is_streaming
+        {
+            player_state.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
+                player_state.preview_width as u32,
+                player_state.preview_height as u32,
+                frame_bytes,
+            ));
+            player_state.timestamp = timestamp;
         }
         Task::none()
     }

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use iced::widget::scrollable;
-use iced::{Element, Task};
+use iced::{Element, Subscription, Task};
 
 use crate::state::{GridViewState, ScanStatus, grid_scrollable_id};
 use crate::ui::editor::editor_view;
@@ -87,6 +87,14 @@ pub enum Message {
     OpenParentDir(PathBuf),
     CommandPreviewHovered(bool),
     TargetSizeChanged(String),
+
+    // Streaming playback (experimental)
+    StartStreamingFrames,
+    StopStreamingFrames,
+    StreamedFrame {
+        frame_bytes: Vec<u8>,
+        timestamp: f64,
+    },
 }
 
 impl App {
@@ -162,6 +170,14 @@ impl App {
             Message::OpenParentDir(path) => self.handle_open_parent_dir(path),
             Message::CommandPreviewHovered(hovered) => self.handle_command_preview_hovered(hovered),
             Message::TargetSizeChanged(value) => self.handle_target_size_changed(value),
+
+            // Streaming handlers
+            Message::StartStreamingFrames => self.handle_start_streaming(),
+            Message::StopStreamingFrames => self.handle_stop_streaming(),
+            Message::StreamedFrame {
+                frame_bytes,
+                timestamp,
+            } => self.handle_streamed_frame(frame_bytes, timestamp),
         }
     }
 
@@ -178,6 +194,25 @@ impl App {
             }
             Screen::Settings => self.settings_view(),
             Screen::About => self.about_view(),
+        }
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        // Frame streaming subscription (only active when is_streaming is true)
+        match &self.player_state {
+            Some(p) if p.is_streaming => {
+                log::debug!(
+                    "Creating frame streaming subscription at timestamp {}",
+                    p.timestamp
+                );
+                crate::video::frame_streaming::frame_stream_subscription(
+                    p.video_path.clone(),
+                    p.timestamp,
+                    p.preview_width as u32,
+                    p.preview_height as u32,
+                )
+            }
+            _ => Subscription::none(),
         }
     }
 

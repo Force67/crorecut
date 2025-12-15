@@ -12,7 +12,7 @@ use crate::utils::format_timestamp_precise;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-/// Extract a single frame from a video at the specified timestamp. Returns PNG-encoded frame bytes
+/// Extract a single frame from a video at the specified timestamp. Returns RGBA frame bytes
 pub async fn extract_frame(
     video_path: PathBuf,
     timestamp_seconds: f64,
@@ -35,9 +35,9 @@ pub async fn extract_frame(
         .arg("-frames:v")
         .arg("1")
         .arg("-f")
-        .arg("image2pipe")
-        .arg("-vcodec")
-        .arg("png")
+        .arg("rawvideo")
+        .arg("-pix_fmt")
+        .arg("rgba")
         .arg("-")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());

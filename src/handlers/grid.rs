@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use iced::Task;
+use iced::advanced::image;
 
 use crate::app::{App, Message};
 use crate::state::{
@@ -123,7 +124,8 @@ impl App {
         {
             item.thumbnail_state = match thumbnail_result {
                 Ok(bytes) => {
-                    ThumbnailState::Ready(iced::advanced::image::Handle::from_bytes(bytes))
+                    let width = (bytes.len() / 360 / 4) as u32; // Kinda hacky, but height is always 360
+                    ThumbnailState::Ready(image::Handle::from_rgba(width, 360, bytes))
                 }
                 Err(error_msg) => ThumbnailState::Failed(error_msg),
             };
@@ -160,7 +162,6 @@ impl App {
             is_extracting: false,
             last_extraction_request_id: 0,
             pending_timestamp: None,
-            frame_cache: crate::video::FrameCache::new(75),
             crop_selection: None,
             selection_state: SelectionState::Idle,
             mouse_position: (0.0, 0.0),
@@ -171,6 +172,7 @@ impl App {
             is_command_hovered: false,
             target_size_mb: String::new(),
             video_file_size_mb: file_size_mb,
+            is_streaming: false,
         });
 
         // Switch to editor screen
