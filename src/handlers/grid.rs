@@ -85,15 +85,16 @@ impl App {
             self.grid_state.thumbnails_in_progress += 1;
 
             let path_for_thumbnail = video_path.clone();
-            let path_for_duration = video_path.clone();
+            let path_for_info = video_path.clone();
             let path_for_message = video_path;
             Task::perform(
                 async move {
                     let thumbnail_result = crate::video::extract_frame(path_for_thumbnail, 1.0)
                         .await
                         .map_err(|e| e.to_string());
-                    let duration_result = crate::video::get_video_duration_sec(path_for_duration)
+                    let duration_result = crate::video::get_video_stream_info(path_for_info)
                         .await
+                        .map(|info| info.duration)
                         .map_err(|e| e.to_string());
                     (thumbnail_result, duration_result)
                 },
@@ -157,6 +158,7 @@ impl App {
             duration: 0.0,
             video_width: 0,
             video_height: 0,
+            video_fps: 30.0, // Default, will be updated by FpsReceived
             preview_width: 0.0,
             preview_height: 360.0,
             is_extracting: false,
@@ -178,19 +180,14 @@ impl App {
         // Switch to editor screen
         self.current_screen = Screen::Editor;
 
-        // Get video metadata and load initial frame
-        let path_for_duration = video_path.clone();
-        let path_for_dimensions = video_path.clone();
+        // Get video stream info and load initial frame
+        let path_for_info = video_path.clone();
         let path_for_frame = video_path;
 
         Task::batch(vec![
             Task::perform(
-                async move { crate::video::get_video_duration_sec(path_for_duration).await },
-                |result| Message::DurationReceived(result.map_err(|e| e.to_string())),
-            ),
-            Task::perform(
-                async move { crate::video::get_video_dimensions(path_for_dimensions).await },
-                |result| Message::DimensionsReceived(result.map_err(|e| e.to_string())),
+                async move { crate::video::get_video_stream_info(path_for_info).await },
+                |result| Message::VideoStreamInfoReceived(result.map_err(|e| e.to_string())),
             ),
             Task::perform(
                 async move {

@@ -5,7 +5,7 @@ use iced::{Element, Subscription, Task};
 
 use crate::state::{GridViewState, ScanStatus, grid_scrollable_id};
 use crate::ui::editor::editor_view;
-use crate::video::VideoMetadata;
+use crate::video::{VideoMetadata, VideoStreamInfo};
 
 // Re-export for ui and handler modules
 pub use crate::state::{PlayerViewState, RenderStatus, ResizeHandle};
@@ -60,8 +60,7 @@ pub enum Message {
         request_id: u64,
         result: Result<Vec<u8>, String>,
     },
-    DurationReceived(Result<f64, String>),
-    DimensionsReceived(Result<(u32, u32), String>),
+    VideoStreamInfoReceived(Result<VideoStreamInfo, String>),
     SliderChanged(f64),
 
     // Crop selection
@@ -142,8 +141,7 @@ impl App {
             }
 
             // Player handlers
-            Message::DurationReceived(result) => self.handle_duration_received(result),
-            Message::DimensionsReceived(result) => self.handle_dimensions_received(result),
+            Message::VideoStreamInfoReceived(result) => self.handle_video_stream_info(result),
             Message::FrameExtracted { request_id, result } => {
                 self.handle_frame_extracted(request_id, result)
             }
@@ -210,6 +208,7 @@ impl App {
                     p.timestamp,
                     p.preview_width as u32,
                     p.preview_height as u32,
+                    p.video_fps,
                 )
             }
             _ => Subscription::none(),

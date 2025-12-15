@@ -16,8 +16,6 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// a single process alive and reads frames sequentially from its stdout.
 pub struct FrameStreaming {
     child: Child,
-    width: u32,
-    height: u32,
     frame_size: usize, // width * height * 4 (RGBA)
 }
 
@@ -33,12 +31,7 @@ impl FrameStreaming {
         let child = Self::spawn_ffmpeg(video_path, width, height, start_timestamp)?;
         let frame_size = (width * height * 4) as usize; // RGBA
 
-        Ok(Self {
-            child,
-            width,
-            height,
-            frame_size,
-        })
+        Ok(Self { child, frame_size })
     }
 
     fn spawn_ffmpeg(
@@ -113,6 +106,7 @@ struct StartStreamParams {
     start_timestamp: f64,
     width: u32,
     height: u32,
+    fps: f64,
 }
 
 // Module-level static for passing parameters to the stream
@@ -129,13 +123,15 @@ pub fn frame_stream_subscription(
     start_timestamp: f64,
     width: u32,
     height: u32,
+    fps: f64,
 ) -> iced::Subscription<crate::app::Message> {
     log::info!(
-        "frame_stream_subscription called: path={:?}, ts={}, {}x{}",
+        "frame_stream_subscription called: path={:?}, ts={}, {}x{}, fps={}",
         video_path,
         start_timestamp,
         width,
-        height
+        height,
+        fps
     );
 
     let params_lock = STREAM_PARAMS.get_or_init(|| std::sync::Mutex::new(None));
@@ -144,6 +140,7 @@ pub fn frame_stream_subscription(
         start_timestamp,
         width,
         height,
+        fps,
     });
 
     iced::Subscription::run(create_frame_stream)
@@ -160,6 +157,7 @@ fn create_frame_stream() -> impl iced::futures::Stream<Item = crate::app::Messag
         start_timestamp,
         width,
         height,
+        fps,
     } = STREAM_PARAMS
         .get()
         .and_then(|lock| lock.lock().ok())
@@ -167,11 +165,12 @@ fn create_frame_stream() -> impl iced::futures::Stream<Item = crate::app::Messag
         .expect("No stream params set in STREAM_PARAMS static field!");
 
     log::info!(
-        "create_frame_stream: path={:?}, ts={}, {}x{}",
+        "create_frame_stream: path={:?}, ts={}, {}x{}, fps={}",
         video_path,
         start_timestamp,
         width,
-        height
+        height,
+        fps
     );
 
     iced::stream::channel(
@@ -193,7 +192,8 @@ fn create_frame_stream() -> impl iced::futures::Stream<Item = crate::app::Messag
                 };
 
             let mut current_timestamp = start_timestamp;
-            let frame_duration = 1.0 / 30.0; // Assume 30fps for now
+            let frame_duration = 1.0 / fps;
+            let frame_delay_ms = (1000.0 / fps) as u64;
             let mut frame_count = 0u64;
 
             loop {
@@ -202,11 +202,13 @@ fn create_frame_stream() -> impl iced::futures::Stream<Item = crate::app::Messag
                         current_timestamp += frame_duration;
                         frame_count += 1;
 
-                        if frame_count % 30 == 1 {
+                        // Log once per second (approximately)
+                        if frame_count % fps.round() as u64 == 1 {
                             log::info!(
-                                "Streaming frame #{} at timestamp {:.2}s",
+                                "Streaming frame #{} at timestamp {:.2}s ({}fps)",
                                 frame_count,
-                                current_timestamp
+                                current_timestamp,
+                                fps.round()
                             );
                         }
 
@@ -220,7 +222,7 @@ fn create_frame_stream() -> impl iced::futures::Stream<Item = crate::app::Messag
                             break;
                         }
 
-                        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(frame_delay_ms)).await;
                     }
                     Ok(None) => {
                         log::info!("Frame streaming reached end of video");

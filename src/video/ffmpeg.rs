@@ -12,6 +12,92 @@ use crate::utils::format_timestamp_precise;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// Video stream properties from ffprobe
+#[derive(Debug, Clone)]
+pub struct VideoStreamInfo {
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
+    pub duration: f64,
+}
+
+/// Get video stream info (dimensions, fps, duration) in a single ffprobe call.
+pub async fn get_video_stream_info(
+    video_path: PathBuf,
+) -> Result<VideoStreamInfo, FfmpegCommandError> {
+    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
+        return Err(FfmpegCommandError::CommandFailed(format!(
+            "Video not found: {}",
+            video_path.display()
+        )));
+    }
+
+    let mut command = Command::new("ffprobe");
+    command
+        .arg("-v")
+        .arg("error")
+        .arg("-select_streams")
+        .arg("v:0")
+        .arg("-show_entries")
+        .arg("stream=width,height,r_frame_rate:format=duration")
+        .arg("-of")
+        .arg("default=noprint_wrappers=1")
+        .arg(&video_path);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let output = command
+        .output()
+        .await
+        .map_err(|_| FfmpegCommandError::FFmpegNotFound)?;
+
+    if !output.status.success() {
+        return Err(FfmpegCommandError::CommandFailed(
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+
+    // Parse output like:
+    // width=1920
+    // height=1080
+    // r_frame_rate=30/1
+    // duration=10.000000
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let mut width: Option<u32> = None;
+    let mut height: Option<u32> = None;
+    let mut fps: Option<f64> = None;
+    let mut duration: Option<f64> = None;
+
+    for line in output_str.lines() {
+        if let Some((key, value)) = line.split_once('=') {
+            match key {
+                "width" => width = value.parse().ok(),
+                "height" => height = value.parse().ok(),
+                "r_frame_rate" => {
+                    // Parse fraction like "30/1" or "30000/1001"
+                    if let Some((num, den)) = value.split_once('/')
+                        && let (Ok(n), Ok(d)) = (num.parse::<f64>(), den.parse::<f64>())
+                        && d != 0.0
+                    {
+                        fps = Some(n / d);
+                    }
+                }
+                "duration" => duration = value.parse().ok(),
+                _ => {}
+            }
+        }
+    }
+
+    Ok(VideoStreamInfo {
+        width: width.ok_or_else(|| FfmpegCommandError::CommandFailed("Missing width".into()))?,
+        height: height.ok_or_else(|| FfmpegCommandError::CommandFailed("Missing height".into()))?,
+        fps: fps.unwrap_or(30.0), // Default to 30fps if not found
+        duration: duration
+            .ok_or_else(|| FfmpegCommandError::CommandFailed("Missing duration".into()))?,
+    })
+}
+
 /// Extract a single frame from a video at the specified timestamp. Returns RGBA frame bytes
 pub async fn extract_frame(
     video_path: PathBuf,
@@ -80,93 +166,6 @@ pub async fn extract_frame(
     }
 
     Ok(frame_bytes)
-}
-
-pub async fn get_video_duration_sec(video_path: PathBuf) -> Result<f64, FrameExtractionError> {
-    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
-        return Err(FrameExtractionError::VideoNotFound(video_path));
-    }
-
-    let mut command = Command::new("ffprobe");
-    command
-        .arg("-v")
-        .arg("error")
-        .arg("-show_entries")
-        .arg("format=duration")
-        .arg("-of")
-        .arg("default=noprint_wrappers=1:nokey=1")
-        .arg(&video_path);
-
-    #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
-
-    let output = command
-        .output()
-        .await
-        .map_err(|_| FrameExtractionError::FFmpegNotFound)?;
-
-    if !output.status.success() {
-        return Err(FrameExtractionError::ExtractionFailed(
-            String::from_utf8_lossy(&output.stderr).to_string(),
-        ));
-    }
-
-    let duration_str = String::from_utf8_lossy(&output.stdout);
-    duration_str.trim().parse::<f64>().map_err(|e| {
-        FrameExtractionError::ExtractionFailed(format!("Failed to parse duration: {}", e))
-    })
-}
-
-/// Get the dimensions (width x height) of a video file
-pub async fn get_video_dimensions(video_path: PathBuf) -> Result<(u32, u32), FrameExtractionError> {
-    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
-        return Err(FrameExtractionError::VideoNotFound(video_path));
-    }
-
-    let mut command = Command::new("ffprobe");
-    command
-        .arg("-v")
-        .arg("error")
-        .arg("-select_streams")
-        .arg("v:0")
-        .arg("-show_entries")
-        .arg("stream=width,height")
-        .arg("-of")
-        .arg("csv=p=0")
-        .arg(&video_path);
-
-    #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
-
-    let output = command
-        .output()
-        .await
-        .map_err(|_| FrameExtractionError::FFmpegNotFound)?;
-
-    if !output.status.success() {
-        return Err(FrameExtractionError::ExtractionFailed(
-            String::from_utf8_lossy(&output.stderr).to_string(),
-        ));
-    }
-
-    let dimensions_str = String::from_utf8_lossy(&output.stdout);
-    let parts: Vec<&str> = dimensions_str.trim().split(',').collect();
-
-    if parts.len() != 2 {
-        return Err(FrameExtractionError::ExtractionFailed(
-            "Failed to parse video dimensions".to_string(),
-        ));
-    }
-
-    let width = parts[0].parse::<u32>().map_err(|e| {
-        FrameExtractionError::ExtractionFailed(format!("Failed to parse width: {}", e))
-    })?;
-
-    let height = parts[1].parse::<u32>().map_err(|e| {
-        FrameExtractionError::ExtractionFailed(format!("Failed to parse height: {}", e))
-    })?;
-
-    Ok((width, height))
 }
 
 /// Get the audio bitrate of a video file in bits per second.

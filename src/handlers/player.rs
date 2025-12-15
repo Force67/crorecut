@@ -1,44 +1,39 @@
 use iced::Task;
 
 use crate::app::{App, Message};
+use crate::video::VideoStreamInfo;
 
 impl App {
-    pub(crate) fn handle_duration_received(
+    pub(crate) fn handle_video_stream_info(
         &mut self,
-        result: Result<f64, String>,
+        result: Result<VideoStreamInfo, String>,
     ) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state {
             match result {
-                Ok(duration) => {
-                    player_state.duration = duration;
-                    player_state.trim_end = duration;
-                }
-                Err(error_msg) => {
-                    log::error!("Failed to load video duration: {error_msg}");
-                }
-            }
-        }
-        Task::none()
-    }
-
-    pub(crate) fn handle_dimensions_received(
-        &mut self,
-        result: Result<(u32, u32), String>,
-    ) -> Task<Message> {
-        if let Some(ref mut player_state) = self.player_state {
-            match result {
-                Ok((width, height)) => {
-                    player_state.video_width = width;
-                    player_state.video_height = height;
+                Ok(info) => {
+                    player_state.video_width = info.width;
+                    player_state.video_height = info.height;
+                    player_state.video_fps = info.fps;
+                    player_state.duration = info.duration;
+                    player_state.trim_end = info.duration;
 
                     // Calculate preview dimensions (360p with maintained aspect ratio)
-                    if height > 0 {
-                        player_state.preview_width = (width as f32 * 360.0) / height as f32;
+                    if info.height > 0 {
+                        player_state.preview_width =
+                            (info.width as f32 * 360.0) / info.height as f32;
                         player_state.preview_height = 360.0;
                     }
+
+                    log::info!(
+                        "Video: {}x{} @ {:.2}fps, {:.2}s",
+                        info.width,
+                        info.height,
+                        info.fps,
+                        info.duration
+                    );
                 }
                 Err(error_msg) => {
-                    log::error!("Failed to load video dimensions: {error_msg}");
+                    log::error!("Failed to get video info: {error_msg}");
                 }
             }
         }

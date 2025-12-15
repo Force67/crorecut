@@ -23,6 +23,7 @@ pub struct PlayerViewState {
 
     pub video_width: u32,
     pub video_height: u32,
+    pub video_fps: f64,
     pub preview_width: f32,
     pub preview_height: f32,
 
