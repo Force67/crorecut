@@ -1,3 +1,6 @@
+use iced::advanced::subscription::{self, Recipe};
+use iced::futures::stream::BoxStream;
+use std::hash::Hash;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::AsyncReadExt;
@@ -100,8 +103,11 @@ impl Drop for FrameStreaming {
     }
 }
 
-#[derive(Clone)]
-struct StartStreamParams {
+/// Recipe for streaming video frames via iced's subscription system.
+///
+/// This holds all parameters needed to create a frame stream, and iced
+/// will use the `hash` method to determine subscription identity.
+struct FrameStreamRecipe {
     video_path: PathBuf,
     start_timestamp: f64,
     width: u32,
@@ -109,10 +115,108 @@ struct StartStreamParams {
     fps: f64,
 }
 
-// Module-level static for passing parameters to the stream
-// (needed because Subscription::run doesn't support closures that capture variables)
-static STREAM_PARAMS: std::sync::OnceLock<std::sync::Mutex<Option<StartStreamParams>>> =
-    std::sync::OnceLock::new();
+impl Recipe for FrameStreamRecipe {
+    type Output = crate::app::Message;
+
+    fn hash(&self, state: &mut subscription::Hasher) {
+        // Use video_path for identity - same video = same subscription
+        // This means the subscription won't restart if only timestamp changes
+        self.video_path.hash(state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: subscription::EventStream,
+    ) -> BoxStream<'static, Self::Output> {
+        use iced::futures::SinkExt;
+
+        let video_path = self.video_path;
+        let start_timestamp = self.start_timestamp;
+        let width = self.width;
+        let height = self.height;
+        let fps = self.fps;
+
+        log::info!(
+            "FrameStreamRecipe::stream: path={:?}, ts={}, {}x{}, fps={}",
+            video_path,
+            start_timestamp,
+            width,
+            height,
+            fps
+        );
+
+        Box::pin(iced::stream::channel(
+            1,
+            move |mut output: iced::futures::channel::mpsc::Sender<crate::app::Message>| async move {
+                log::info!("Frame stream channel started, spawning ffmpeg...");
+
+                // Create the streamer
+                let mut streaming = match FrameStreaming::start(
+                    &video_path,
+                    width,
+                    height,
+                    start_timestamp,
+                )
+                .await
+                {
+                    Ok(s) => {
+                        log::info!("FrameStreaming started successfully");
+                        s
+                    }
+                    Err(e) => {
+                        log::error!("Failed to start frame streaming: {}", e);
+                        return;
+                    }
+                };
+
+                let mut current_timestamp = start_timestamp;
+                let frame_duration = 1.0 / fps;
+                let frame_delay_ms = (1000.0 / fps) as u64;
+                let mut frame_count = 0u64;
+
+                loop {
+                    match streaming.next_frame().await {
+                        Ok(Some(rgba_data)) => {
+                            current_timestamp += frame_duration;
+                            frame_count += 1;
+
+                            // Log once per second (approximately)
+                            if frame_count % fps.round() as u64 == 1 {
+                                log::info!(
+                                    "Streaming frame #{} at timestamp {:.2}s ({}fps)",
+                                    frame_count,
+                                    current_timestamp,
+                                    fps.round()
+                                );
+                            }
+
+                            let msg = crate::app::Message::StreamedFrame {
+                                frame_bytes: rgba_data,
+                                timestamp: current_timestamp,
+                            };
+
+                            if output.send(msg).await.is_err() {
+                                log::info!("Channel closed, stopping stream");
+                                break;
+                            }
+
+                            tokio::time::sleep(std::time::Duration::from_millis(frame_delay_ms))
+                                .await;
+                        }
+                        Ok(None) => {
+                            log::info!("Frame streaming reached end of video");
+                            break;
+                        }
+                        Err(e) => {
+                            log::error!("Frame streaming error: {}", e);
+                            break;
+                        }
+                    }
+                }
+            },
+        ))
+    }
+}
 
 /// Creates an iced subscription that streams frames from a video.
 ///
@@ -134,106 +238,11 @@ pub fn frame_stream_subscription(
         fps
     );
 
-    let params_lock = STREAM_PARAMS.get_or_init(|| std::sync::Mutex::new(None));
-    *params_lock.lock().unwrap() = Some(StartStreamParams {
+    subscription::from_recipe(FrameStreamRecipe {
         video_path,
         start_timestamp,
         width,
         height,
         fps,
-    });
-
-    iced::Subscription::run(create_frame_stream)
-}
-
-fn create_frame_stream() -> impl iced::futures::Stream<Item = crate::app::Message> {
-    use iced::futures::SinkExt;
-
-    log::info!("create_frame_stream() called");
-
-    // Retrieve parameters from module-level static storage
-    let StartStreamParams {
-        video_path,
-        start_timestamp,
-        width,
-        height,
-        fps,
-    } = STREAM_PARAMS
-        .get()
-        .and_then(|lock| lock.lock().ok())
-        .and_then(|guard| guard.clone())
-        .expect("No stream params set in STREAM_PARAMS static field!");
-
-    log::info!(
-        "create_frame_stream: path={:?}, ts={}, {}x{}, fps={}",
-        video_path,
-        start_timestamp,
-        width,
-        height,
-        fps
-    );
-
-    iced::stream::channel(
-        1,
-        move |mut output: iced::futures::channel::mpsc::Sender<crate::app::Message>| async move {
-            log::info!("Frame stream channel started, spawning ffmpeg...");
-
-            // Create the streamer
-            let mut streaming =
-                match FrameStreaming::start(&video_path, width, height, start_timestamp).await {
-                    Ok(s) => {
-                        log::info!("FrameStreaming started successfully");
-                        s
-                    }
-                    Err(e) => {
-                        log::error!("Failed to start frame streaming: {}", e);
-                        return;
-                    }
-                };
-
-            let mut current_timestamp = start_timestamp;
-            let frame_duration = 1.0 / fps;
-            let frame_delay_ms = (1000.0 / fps) as u64;
-            let mut frame_count = 0u64;
-
-            loop {
-                match streaming.next_frame().await {
-                    Ok(Some(rgba_data)) => {
-                        current_timestamp += frame_duration;
-                        frame_count += 1;
-
-                        // Log once per second (approximately)
-                        if frame_count % fps.round() as u64 == 1 {
-                            log::info!(
-                                "Streaming frame #{} at timestamp {:.2}s ({}fps)",
-                                frame_count,
-                                current_timestamp,
-                                fps.round()
-                            );
-                        }
-
-                        let msg = crate::app::Message::StreamedFrame {
-                            frame_bytes: rgba_data,
-                            timestamp: current_timestamp,
-                        };
-
-                        if output.send(msg).await.is_err() {
-                            log::info!("Channel closed, stopping stream");
-                            break;
-                        }
-
-                        tokio::time::sleep(std::time::Duration::from_millis(frame_delay_ms)).await;
-                    }
-                    Ok(None) => {
-                        log::info!("Frame streaming reached end of video");
-                        break;
-                    }
-                    Err(e) => {
-                        log::error!("Frame streaming error: {}", e);
-                        break;
-                    }
-                }
-            }
-        },
-    )
+    })
 }
