@@ -5,6 +5,7 @@
 // ^ Hide console in release builds
 
 mod app;
+mod audio;
 mod config;
 mod handlers;
 mod icons;

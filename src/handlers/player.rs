@@ -16,6 +16,7 @@ impl App {
                     player_state.video_fps = info.fps;
                     player_state.duration = info.duration;
                     player_state.trim_end = info.duration;
+                    player_state.has_audio_stream = info.has_audio;
 
                     // Calculate preview dimensions (360p with maintained aspect ratio)
                     if info.height > 0 {
@@ -25,11 +26,26 @@ impl App {
                     }
 
                     log::info!(
-                        "Video: {}x{} @ {:.2}fps, {:.2}s",
+                        "Video: {}x{} @ {:.2}fps, {:.2}s, audio: {}",
                         info.width,
                         info.height,
                         info.fps,
-                        info.duration
+                        info.duration,
+                        if info.has_audio { "yes" } else { "no" }
+                    );
+
+                    // Now that dimensions are set, extract initial frame
+                    let video_path = player_state.video_path.clone();
+                    return Task::perform(
+                        async move {
+                            crate::video::extract_frame(video_path, 0.0)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        |result| Message::FrameExtracted {
+                            request_id: 0,
+                            result,
+                        },
                     );
                 }
                 Err(error_msg) => {
@@ -160,18 +176,45 @@ impl App {
     pub(crate) fn handle_streamed_frame(
         &mut self,
         frame_bytes: Vec<u8>,
-        timestamp: f64,
+        video_timestamp: f64,
     ) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state
             && player_state.is_streaming
         {
-            player_state.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
-                player_state.preview_width as u32,
-                player_state.preview_height as u32,
-                frame_bytes,
-            ));
-            player_state.timestamp = timestamp;
+            // A/V sync: only display frame if video is not ahead of audio
+            let sync_threshold = 0.05; // 50ms tolerance
+
+            let should_display = if player_state.has_audio_stream {
+                video_timestamp <= player_state.audio_position + sync_threshold // Audio-leads sync
+            } else {
+                true
+            };
+
+            if should_display {
+                player_state.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
+                    player_state.preview_width as u32,
+                    player_state.preview_height as u32,
+                    frame_bytes,
+                ));
+                player_state.timestamp = video_timestamp;
+            }
         }
         Task::none()
+    }
+
+    // Audio handlers
+
+    pub(crate) fn handle_audio_position_update(&mut self, position: f64) -> Task<Message> {
+        if let Some(ref mut player_state) = self.player_state
+            && player_state.is_streaming
+        {
+            player_state.audio_position = position;
+        }
+        Task::none()
+    }
+
+    pub(crate) fn handle_audio_stream_ended(&mut self) -> Task<Message> {
+        log::info!("Audio stream ended, stopping playback");
+        self.handle_stop_streaming()
     }
 }

@@ -25,13 +25,13 @@ pub struct FrameStreaming {
 impl FrameStreaming {
     /// Start streaming frames from a video at the given timestamp. The stream
     /// will output frames sequentially from the start position.
-    pub async fn start(
+    pub fn start(
         video_path: &PathBuf,
         width: u32,
         height: u32,
-        start_timestamp: f64,
+        start_ts: f64,
     ) -> Result<Self, String> {
-        let child = Self::spawn_ffmpeg(video_path, width, height, start_timestamp)?;
+        let child = Self::spawn_ffmpeg(video_path, width, height, start_ts)?;
         let frame_size = (width * height * 4) as usize; // RGBA
 
         Ok(Self { child, frame_size })
@@ -41,20 +41,16 @@ impl FrameStreaming {
         video_path: &PathBuf,
         width: u32,
         height: u32,
-        start_timestamp: f64,
+        start_ts: f64,
     ) -> Result<Child, String> {
         let mut command = Command::new("ffmpeg");
         command
-            .arg("-ss")
-            .arg(crate::utils::format_timestamp_precise(start_timestamp))
+            .args(["-ss", &crate::utils::format_timestamp_precise(start_ts)])
             .arg("-i")
             .arg(video_path)
-            .arg("-vf")
-            .arg(format!("scale={}:{}", width, height))
-            .arg("-f")
-            .arg("rawvideo")
-            .arg("-pix_fmt")
-            .arg("rgba")
+            .args(["-vf", &format!("scale={}:{}", width, height)])
+            .args(["-f", "rawvideo"])
+            .args(["-pix_fmt", "rgba"])
             .arg("-")
             .stdout(Stdio::piped())
             .stderr(Stdio::null()); // Suppress ffmpeg logs
@@ -104,9 +100,6 @@ impl Drop for FrameStreaming {
 }
 
 /// Recipe for streaming video frames via iced's subscription system.
-///
-/// This holds all parameters needed to create a frame stream, and iced
-/// will use the `hash` method to determine subscription identity.
 struct FrameStreamRecipe {
     video_path: PathBuf,
     start_timestamp: f64,
@@ -120,7 +113,6 @@ impl Recipe for FrameStreamRecipe {
 
     fn hash(&self, state: &mut subscription::Hasher) {
         // Use video_path for identity - same video = same subscription
-        // This means the subscription won't restart if only timestamp changes
         self.video_path.hash(state);
     }
 
@@ -131,19 +123,10 @@ impl Recipe for FrameStreamRecipe {
         use iced::futures::SinkExt;
 
         let video_path = self.video_path;
-        let start_timestamp = self.start_timestamp;
+        let start_ts = self.start_timestamp;
         let width = self.width;
         let height = self.height;
         let fps = self.fps;
-
-        log::info!(
-            "FrameStreamRecipe::stream: path={:?}, ts={}, {}x{}, fps={}",
-            video_path,
-            start_timestamp,
-            width,
-            height,
-            fps
-        );
 
         Box::pin(iced::stream::channel(
             1,
@@ -151,44 +134,26 @@ impl Recipe for FrameStreamRecipe {
                 log::info!("Frame stream channel started, spawning ffmpeg...");
 
                 // Create the streamer
-                let mut streaming = match FrameStreaming::start(
-                    &video_path,
-                    width,
-                    height,
-                    start_timestamp,
-                )
-                .await
-                {
-                    Ok(s) => {
-                        log::info!("FrameStreaming started successfully");
-                        s
-                    }
-                    Err(e) => {
-                        log::error!("Failed to start frame streaming: {}", e);
-                        return;
-                    }
-                };
+                let mut streaming =
+                    match FrameStreaming::start(&video_path, width, height, start_ts) {
+                        Ok(s) => {
+                            log::info!("FrameStreaming started successfully");
+                            s
+                        }
+                        Err(e) => {
+                            log::error!("Failed to start frame streaming: {}", e);
+                            return;
+                        }
+                    };
 
-                let mut current_timestamp = start_timestamp;
+                let mut current_timestamp = start_ts;
                 let frame_duration = 1.0 / fps;
                 let frame_delay_ms = (1000.0 / fps) as u64;
-                let mut frame_count = 0u64;
 
                 loop {
                     match streaming.next_frame().await {
                         Ok(Some(rgba_data)) => {
                             current_timestamp += frame_duration;
-                            frame_count += 1;
-
-                            // Log once per second (approximately)
-                            if frame_count % fps.round() as u64 == 1 {
-                                log::info!(
-                                    "Streaming frame #{} at timestamp {:.2}s ({}fps)",
-                                    frame_count,
-                                    current_timestamp,
-                                    fps.round()
-                                );
-                            }
 
                             let msg = crate::app::Message::StreamedFrame {
                                 frame_bytes: rgba_data,
@@ -229,15 +194,6 @@ pub fn frame_stream_subscription(
     height: u32,
     fps: f64,
 ) -> iced::Subscription<crate::app::Message> {
-    log::info!(
-        "frame_stream_subscription called: path={:?}, ts={}, {}x{}, fps={}",
-        video_path,
-        start_timestamp,
-        width,
-        height,
-        fps
-    );
-
     subscription::from_recipe(FrameStreamRecipe {
         video_path,
         start_timestamp,

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -19,30 +20,23 @@ pub struct VideoStreamInfo {
     pub height: u32,
     pub fps: f64,
     pub duration: f64,
+    pub has_audio: bool,
 }
 
-/// Get video stream info (dimensions, fps, duration) in a single ffprobe call.
+/// Probe video stream info (dimensions, fps, duration, audio)
 pub async fn get_video_stream_info(
-    video_path: PathBuf,
+    video_path: &Path,
 ) -> Result<VideoStreamInfo, FfmpegCommandError> {
-    if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
-        return Err(FfmpegCommandError::CommandFailed(format!(
-            "Video not found: {}",
-            video_path.display()
-        )));
-    }
-
     let mut command = Command::new("ffprobe");
     command
-        .arg("-v")
-        .arg("error")
-        .arg("-select_streams")
-        .arg("v:0")
-        .arg("-show_entries")
-        .arg("stream=width,height,r_frame_rate:format=duration")
-        .arg("-of")
-        .arg("default=noprint_wrappers=1")
-        .arg(&video_path);
+        .args(["-v", "error"])
+        .args(["-select_streams", "v:0"])
+        .args([
+            "-show_entries",
+            "stream=width,height,r_frame_rate:format=duration",
+        ])
+        .args(["-of", "default=noprint_wrappers=1"])
+        .arg(video_path);
 
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
@@ -54,47 +48,35 @@ pub async fn get_video_stream_info(
 
     if !output.status.success() {
         return Err(FfmpegCommandError::CommandFailed(
-            String::from_utf8_lossy(&output.stderr).to_string(),
+            String::from_utf8_lossy(&output.stderr).into(),
         ));
     }
 
-    // Parse output like:
-    // width=1920
-    // height=1080
-    // r_frame_rate=30/1
-    // duration=10.000000
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let mut width: Option<u32> = None;
-    let mut height: Option<u32> = None;
-    let mut fps: Option<f64> = None;
-    let mut duration: Option<f64> = None;
+    let mut width = None;
+    let mut height = None;
+    let mut fps = None;
+    let mut duration = None;
 
-    for line in output_str.lines() {
-        if let Some((key, value)) = line.split_once('=') {
-            match key {
-                "width" => width = value.parse().ok(),
-                "height" => height = value.parse().ok(),
-                "r_frame_rate" => {
-                    // Parse fraction like "30/1" or "30000/1001"
-                    if let Some((num, den)) = value.split_once('/')
-                        && let (Ok(n), Ok(d)) = (num.parse::<f64>(), den.parse::<f64>())
-                        && d != 0.0
-                    {
-                        fps = Some(n / d);
-                    }
-                }
-                "duration" => duration = value.parse().ok(),
-                _ => {}
-            }
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key {
+            "width" => width = value.parse().ok(),
+            "height" => height = value.parse().ok(),
+            "r_frame_rate" => fps = parse_frame_rate(value),
+            "duration" => duration = value.parse().ok(),
+            _ => {}
         }
     }
 
     Ok(VideoStreamInfo {
-        width: width.ok_or_else(|| FfmpegCommandError::CommandFailed("Missing width".into()))?,
+        width: width.ok_or_else(|| FfmpegCommandError::CommandFailed("No video stream".into()))?,
         height: height.ok_or_else(|| FfmpegCommandError::CommandFailed("Missing height".into()))?,
-        fps: fps.unwrap_or(30.0), // Default to 30fps if not found
+        fps: fps.unwrap_or(30.0),
         duration: duration
             .ok_or_else(|| FfmpegCommandError::CommandFailed("Missing duration".into()))?,
+        has_audio: has_audio_stream(video_path).await,
     })
 }
 
@@ -112,18 +94,13 @@ pub async fn extract_frame(
     // -ss before -i enables faster keyframe seeking
     let mut command = Command::new("ffmpeg");
     command
-        .arg("-ss")
-        .arg(&timestamp_str)
+        .args(["-ss", &timestamp_str])
         .arg("-i")
-        .arg(&video_path)
-        .arg("-vf")
-        .arg("scale=-1:360") // 360p previews
-        .arg("-frames:v")
-        .arg("1")
-        .arg("-f")
-        .arg("rawvideo")
-        .arg("-pix_fmt")
-        .arg("rgba")
+        .arg(video_path)
+        .args(["-vf", "scale=-1:360"]) // 360p previews
+        .args(["-frames:v", "1"])
+        .args(["-f", "rawvideo"])
+        .args(["-pix_fmt", "rgba"])
         .arg("-")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -213,6 +190,26 @@ pub async fn get_audio_bitrate(video_path: PathBuf) -> Result<Option<u64>, Frame
     }
 }
 
+/// Check if a video file has an audio stream.
+pub async fn has_audio_stream(video_path: &Path) -> bool {
+    let mut command = Command::new("ffprobe");
+    command
+        .args(["-v", "error"])
+        .args(["-select_streams", "a:0"])
+        .args(["-show_entries", "stream=codec_type"])
+        .args(["-of", "csv=p=0"])
+        .arg(video_path);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let Ok(output) = command.output().await else {
+        return false;
+    };
+
+    output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "audio"
+}
+
 /// Execute an FFmpeg command with the given arguments.
 pub async fn run_ffmpeg_command(args: &[String]) -> Result<(), FfmpegCommandError> {
     let mut cmd = Command::new("ffmpeg");
@@ -300,4 +297,11 @@ pub async fn run_two_pass_compression(
     }
 
     Ok(())
+}
+
+fn parse_frame_rate(rate: &str) -> Option<f64> {
+    let (num, den) = rate.split_once('/')?;
+    let num: f64 = num.parse().ok()?;
+    let den: f64 = den.parse().ok()?;
+    (den != 0.0).then_some(num / den)
 }

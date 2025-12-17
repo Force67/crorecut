@@ -50,6 +50,10 @@ pub struct PlayerViewState {
 
     // Streaming playback (experimental)
     pub is_streaming: bool,
+
+    // Audio playback state where `audio_position` serves as master clock for A/V sync
+    pub audio_position: f64,
+    pub has_audio_stream: bool,
 }
 
 impl PlayerViewState {

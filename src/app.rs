@@ -94,6 +94,10 @@ pub enum Message {
         frame_bytes: Vec<u8>,
         timestamp: f64,
     },
+
+    // Audio playback
+    AudioPositionUpdate(f64),
+    AudioStreamEnded,
 }
 
 impl App {
@@ -176,6 +180,10 @@ impl App {
                 frame_bytes,
                 timestamp,
             } => self.handle_streamed_frame(frame_bytes, timestamp),
+
+            // Audio handlers
+            Message::AudioPositionUpdate(position) => self.handle_audio_position_update(position),
+            Message::AudioStreamEnded => self.handle_audio_stream_ended(),
         }
     }
 
@@ -196,20 +204,25 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        // Frame streaming subscription (only active when is_streaming is true)
+        // Frame + audio streaming subscriptions
         match &self.player_state {
             Some(p) if p.is_streaming => {
-                log::debug!(
-                    "Creating frame streaming subscription at timestamp {}",
-                    p.timestamp
-                );
-                crate::video::frame_streaming::frame_stream_subscription(
+                let video_sub = crate::video::frame_streaming::frame_stream_subscription(
                     p.video_path.clone(),
                     p.timestamp,
                     p.preview_width as u32,
                     p.preview_height as u32,
                     p.video_fps,
-                )
+                );
+
+                // Add audio subscription if video has audio track
+                if p.has_audio_stream {
+                    let audio_sub =
+                        crate::audio::audio_stream_subscription(p.video_path.clone(), p.timestamp);
+                    Subscription::batch([video_sub, audio_sub])
+                } else {
+                    video_sub
+                }
             }
             _ => Subscription::none(),
         }

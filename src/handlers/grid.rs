@@ -92,7 +92,7 @@ impl App {
                     let thumbnail_result = crate::video::extract_frame(path_for_thumbnail, 1.0)
                         .await
                         .map_err(|e| e.to_string());
-                    let duration_result = crate::video::get_video_stream_info(path_for_info)
+                    let duration_result = crate::video::get_video_stream_info(&path_for_info)
                         .await
                         .map(|info| info.duration)
                         .map_err(|e| e.to_string());
@@ -150,7 +150,7 @@ impl App {
             .map(|m| m.len() as f64 / (1024.0 * 1024.0))
             .unwrap_or(0.0);
 
-        // Initialize player state
+        // Initialize player state with default values, most of which are updated later
         self.player_state = Some(PlayerViewState {
             frame_handle: None,
             timestamp: 0.0,
@@ -158,7 +158,7 @@ impl App {
             duration: 0.0,
             video_width: 0,
             video_height: 0,
-            video_fps: 30.0, // Default, will be updated by FpsReceived
+            video_fps: 30.0,
             preview_width: 0.0,
             preview_height: 360.0,
             is_extracting: false,
@@ -175,31 +175,17 @@ impl App {
             target_size_mb: String::new(),
             video_file_size_mb: file_size_mb,
             is_streaming: false,
+            audio_position: 0.0,
+            has_audio_stream: false,
         });
 
         // Switch to editor screen
         self.current_screen = Screen::Editor;
 
-        // Get video stream info and load initial frame
-        let path_for_info = video_path.clone();
-        let path_for_frame = video_path;
-
-        Task::batch(vec![
-            Task::perform(
-                async move { crate::video::get_video_stream_info(path_for_info).await },
-                |result| Message::VideoStreamInfoReceived(result.map_err(|e| e.to_string())),
-            ),
-            Task::perform(
-                async move {
-                    crate::video::extract_frame(path_for_frame, 0.0)
-                        .await
-                        .map_err(|e| e.to_string())
-                },
-                |result| Message::FrameExtracted {
-                    request_id: 0,
-                    result,
-                },
-            ),
-        ])
+        // Get video stream info (initial frame extraction is triggered after info is received)
+        Task::perform(
+            async move { crate::video::get_video_stream_info(&video_path).await },
+            |result| Message::VideoStreamInfoReceived(result.map_err(|e| e.to_string())),
+        )
     }
 }
