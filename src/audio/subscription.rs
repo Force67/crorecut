@@ -1,7 +1,8 @@
 //! Audio streaming subscription for iced.
 //!
 //! This module provides an iced subscription that streams audio from a video
-//! file using FFmpeg and plays it via cpal. It emits position updates for A/V sync.
+//! file using FFmpeg and plays it via cpal. It writes position to a shared
+//! AudioClock for A/V sync (audio is the master clock).
 
 use std::hash::Hash;
 use std::path::PathBuf;
@@ -12,15 +13,15 @@ use iced::advanced::subscription::{self, Recipe};
 use iced::futures::SinkExt;
 use iced::futures::stream::BoxStream;
 
-use crate::audio::audio_streaming::AudioStreaming;
-
+use super::audio_streaming::AudioStreaming;
+use super::clock::AudioClock;
 use super::player::{AudioPlayer, AudioRingBuffer};
 
 pub const SAMPLE_RATE: u32 = 48000;
 pub const CHANNELS: u16 = 2;
 
 /// How often to emit position updates
-const POSITION_UPDATE_INTERVAL: Duration = Duration::from_millis(50);
+const POSITION_UPDATE_INTERVAL: Duration = Duration::from_millis(33);
 
 /// How much audio to pre-buffer before starting playback (~100ms).
 const PRE_BUFFER_SAMPLES: usize = 48000 / 10 * 2; // 100ms of stereo audio
@@ -31,6 +32,7 @@ struct AudioStreamRecipe {
     start_timestamp: f64,
     sample_rate: u32,
     channels: u16,
+    audio_clock: Arc<AudioClock>,
 }
 
 impl Recipe for AudioStreamRecipe {
@@ -49,11 +51,14 @@ impl Recipe for AudioStreamRecipe {
         let start_timestamp = self.start_timestamp;
         let sample_rate = self.sample_rate;
         let channels = self.channels;
+        let audio_clock = self.audio_clock;
 
         Box::pin(iced::stream::channel(
             1,
             move |mut output: iced::futures::channel::mpsc::Sender<crate::app::Message>| async move {
                 log::info!("Audio stream channel started, spawning ffmpeg...");
+
+                audio_clock.set_position(start_timestamp);
 
                 let ring_buffer = Arc::new(AudioRingBuffer::new(sample_rate, channels));
 
@@ -104,6 +109,9 @@ impl Recipe for AudioStreamRecipe {
                     return;
                 }
 
+                // Mark clock as active - video can now sync to it
+                audio_clock.set_active(true);
+
                 let mut last_position_update = Instant::now();
 
                 // Main loop: read from FFmpeg, push to buffer, emit position updates
@@ -130,9 +138,11 @@ impl Recipe for AudioStreamRecipe {
                         break;
                     }
 
-                    // Emit position update at regular intervals
+                    let position = start_timestamp + player.position_seconds();
+                    audio_clock.set_position(position);
+
+                    // Emit UI position updates at a slower interval
                     if last_position_update.elapsed() >= POSITION_UPDATE_INTERVAL {
-                        let position = start_timestamp + player.position_seconds();
                         if output
                             .send(crate::app::Message::AudioPositionUpdate(position))
                             .await
@@ -149,7 +159,7 @@ impl Recipe for AudioStreamRecipe {
                     }
                 }
 
-                log::info!("Audio stream ended");
+                audio_clock.set_active(false);
             },
         ))
     }
@@ -165,16 +175,21 @@ fn push_s16le_bytes(ring_buffer: &AudioRingBuffer, bytes: &[u8]) {
 
 /// Creates an iced subscription that streams audio from a video.
 ///
+/// The `audio_clock` is a shared clock that this subscription writes to.
+/// Video subscription should read from this clock to stay in sync.
+///
 /// Emits `Message::AudioPositionUpdate` every ~50ms with the current audio position.
 /// Emits `Message::AudioStreamEnded` when the audio track ends.
 pub fn audio_stream_subscription(
     video_path: PathBuf,
     start_timestamp: f64,
+    audio_clock: Arc<AudioClock>,
 ) -> iced::Subscription<crate::app::Message> {
     subscription::from_recipe(AudioStreamRecipe {
         video_path,
         start_timestamp,
         sample_rate: SAMPLE_RATE,
         channels: CHANNELS,
+        audio_clock,
     })
 }

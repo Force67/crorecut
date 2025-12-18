@@ -1,5 +1,7 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use crate::audio::AudioClock;
 use crate::ui::editor::ImageTransform;
 use crate::ui::selection_canvas::CropSelection;
 
@@ -51,9 +53,9 @@ pub struct PlayerViewState {
     // Streaming playback (experimental)
     pub is_streaming: bool,
 
-    // Audio playback state where `audio_position` serves as master clock for A/V sync
     pub audio_position: f64,
     pub has_audio_stream: bool,
+    pub audio_clock: Arc<AudioClock>,
 }
 
 impl PlayerViewState {

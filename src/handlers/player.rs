@@ -181,23 +181,12 @@ impl App {
         if let Some(ref mut player_state) = self.player_state
             && player_state.is_streaming
         {
-            // A/V sync: only display frame if video is not ahead of audio
-            let sync_threshold = 0.05; // 50ms tolerance
-
-            let should_display = if player_state.has_audio_stream {
-                video_timestamp <= player_state.audio_position + sync_threshold // Audio-leads sync
-            } else {
-                true
-            };
-
-            if should_display {
-                player_state.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
-                    player_state.preview_width as u32,
-                    player_state.preview_height as u32,
-                    frame_bytes,
-                ));
-                player_state.timestamp = video_timestamp;
-            }
+            player_state.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
+                player_state.preview_width as u32,
+                player_state.preview_height as u32,
+                frame_bytes,
+            ));
+            player_state.timestamp = video_timestamp;
         }
         Task::none()
     }

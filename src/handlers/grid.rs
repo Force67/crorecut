@@ -1,9 +1,11 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use iced::Task;
 use iced::advanced::image;
 
 use crate::app::{App, Message};
+use crate::audio::AudioClock;
 use crate::state::{
     MAX_CONCURRENT_THUMBNAILS, PlayerViewState, RenderStatus, ScanStatus, SelectionState,
 };
@@ -177,6 +179,7 @@ impl App {
             is_streaming: false,
             audio_position: 0.0,
             has_audio_stream: false,
+            audio_clock: Arc::new(AudioClock::new()),
         });
 
         // Switch to editor screen

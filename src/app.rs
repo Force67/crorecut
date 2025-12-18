@@ -204,7 +204,7 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        // Frame + audio streaming subscriptions
+        // Frame + audio streaming subscriptions with clock for A/V sync
         match &self.player_state {
             Some(p) if p.is_streaming => {
                 let video_sub = crate::video::frame_streaming::frame_stream_subscription(
@@ -213,12 +213,17 @@ impl App {
                     p.preview_width as u32,
                     p.preview_height as u32,
                     p.video_fps,
+                    p.audio_clock.clone(),
+                    p.has_audio_stream,
                 );
 
                 // Add audio subscription if video has audio track
                 if p.has_audio_stream {
-                    let audio_sub =
-                        crate::audio::audio_stream_subscription(p.video_path.clone(), p.timestamp);
+                    let audio_sub = crate::audio::audio_stream_subscription(
+                        p.video_path.clone(),
+                        p.timestamp,
+                        p.audio_clock.clone(),
+                    );
                     Subscription::batch([video_sub, audio_sub])
                 } else {
                     video_sub

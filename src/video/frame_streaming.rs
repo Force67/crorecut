@@ -3,8 +3,12 @@ use iced::futures::stream::BoxStream;
 use std::hash::Hash;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
+
+use crate::audio::AudioClock;
 
 #[cfg(windows)]
 #[allow(unused_imports)]
@@ -106,6 +110,8 @@ struct FrameStreamRecipe {
     width: u32,
     height: u32,
     fps: f64,
+    audio_clock: Arc<AudioClock>, // Shared audio clock for A/V sync
+    has_audio: bool,
 }
 
 impl Recipe for FrameStreamRecipe {
@@ -127,6 +133,8 @@ impl Recipe for FrameStreamRecipe {
         let width = self.width;
         let height = self.height;
         let fps = self.fps;
+        let audio_clock = self.audio_clock;
+        let has_audio = self.has_audio;
 
         Box::pin(iced::stream::channel(
             1,
@@ -146,37 +154,50 @@ impl Recipe for FrameStreamRecipe {
                         }
                     };
 
-                let mut current_timestamp = start_ts;
                 let frame_duration = 1.0 / fps;
-                let frame_delay_ms = (1000.0 / fps) as u64;
+                let frame_delay = Duration::from_secs_f64(frame_duration);
+
+                // Next frame's target timestamp
+                let mut next_frame_ts = start_ts;
 
                 loop {
-                    match streaming.next_frame().await {
-                        Ok(Some(rgba_data)) => {
-                            current_timestamp += frame_duration;
-
-                            let msg = crate::app::Message::StreamedFrame {
-                                frame_bytes: rgba_data,
-                                timestamp: current_timestamp,
-                            };
-
-                            if output.send(msg).await.is_err() {
-                                log::info!("Channel closed, stopping stream");
-                                break;
-                            }
-
-                            tokio::time::sleep(std::time::Duration::from_millis(frame_delay_ms))
-                                .await;
-                        }
-                        Ok(None) => {
-                            log::info!("Frame streaming reached end of video");
-                            break;
-                        }
+                    // Get frame ready
+                    let frame = match streaming.next_frame().await {
+                        Ok(Some(rgba_data)) => rgba_data,
+                        Ok(None) => break,
                         Err(e) => {
                             log::error!("Frame streaming error: {}", e);
                             break;
                         }
+                    };
+
+                    if has_audio {
+                        let audio_pos = audio_clock.position();
+
+                        // Drop frames if we're too far behind
+                        if next_frame_ts < audio_pos - 0.1 {
+                            next_frame_ts += frame_duration;
+                            continue;
+                        }
+
+                        let wait_secs = next_frame_ts - audio_pos;
+                        if wait_secs > 0.0 {
+                            tokio::time::sleep(Duration::from_secs_f64(wait_secs)).await;
+                        }
+                    } else {
+                        tokio::time::sleep(frame_delay).await;
                     }
+
+                    let msg = crate::app::Message::StreamedFrame {
+                        frame_bytes: frame,
+                        timestamp: next_frame_ts,
+                    };
+
+                    if output.send(msg).await.is_err() {
+                        break;
+                    }
+
+                    next_frame_ts += frame_duration;
                 }
             },
         ))
@@ -193,6 +214,8 @@ pub fn frame_stream_subscription(
     width: u32,
     height: u32,
     fps: f64,
+    audio_clock: Arc<AudioClock>,
+    has_audio: bool,
 ) -> iced::Subscription<crate::app::Message> {
     subscription::from_recipe(FrameStreamRecipe {
         video_path,
@@ -200,5 +223,7 @@ pub fn frame_stream_subscription(
         width,
         height,
         fps,
+        audio_clock,
+        has_audio,
     })
 }
