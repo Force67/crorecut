@@ -3,10 +3,72 @@ use std::path::PathBuf;
 use iced::Task;
 
 use crate::app::{CrorecutApp, Message, RenderStatus};
+use crate::state::PlayerViewState;
+use crate::video::{
+    CompressionParams, VideoDimensions, build_compression_command, build_ffmpeg_command,
+};
+
+/// Regenerate the FFmpeg command preview strings based on current player state
+pub(crate) fn regenerate_command_preview(state: &mut PlayerViewState) {
+    let dimen = VideoDimensions {
+        video_width: state.video_width,
+        video_height: state.video_height,
+        preview_width: state.preview_width,
+        preview_height: state.preview_height,
+    };
+
+    let target_size: Option<f64> = state
+        .target_size_mb
+        .trim()
+        .parse()
+        .ok()
+        .filter(|&s: &f64| s > 0.0);
+
+    if let Some(target_size_mb) = target_size {
+        let params = CompressionParams {
+            target_size_mb,
+            duration_sec: state.duration,
+            audio_bitrate_bps: state.audio_bitrate_bps,
+        };
+        match build_compression_command(
+            &state.video_path,
+            &params,
+            state.crop_selection.as_ref(),
+            state.trim_start,
+            state.trim_end,
+            &dimen,
+        ) {
+            Ok(cmd) => {
+                state.command_preview_full = cmd.preview_full;
+                state.command_preview_masked = cmd.preview_masked;
+            }
+            Err(e) => {
+                let err_msg = format!("Error: {}", e);
+                state.command_preview_full = err_msg.clone();
+                state.command_preview_masked = err_msg;
+            }
+        }
+    } else {
+        let cmd = build_ffmpeg_command(
+            &state.video_path,
+            state.crop_selection.as_ref(),
+            state.trim_start,
+            state.trim_end,
+            state.duration,
+            &dimen,
+        );
+        state.command_preview_full = cmd.full;
+        state.command_preview_masked = cmd.masked;
+    }
+}
 
 impl CrorecutApp {
-    pub(crate) fn handle_copy_command(&self, cmd: String) -> Task<Message> {
-        iced::clipboard::write(cmd)
+    pub(crate) fn handle_copy_command(&self) -> Task<Message> {
+        if let Some(state) = &self.player_state {
+            iced::clipboard::write(state.command_preview_full.clone())
+        } else {
+            Task::none()
+        }
     }
 
     pub(crate) fn handle_run_command(&mut self) -> Task<Message> {
@@ -191,6 +253,7 @@ impl CrorecutApp {
     pub(crate) fn handle_target_size_changed(&mut self, value: String) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state {
             player_state.target_size_mb = value;
+            regenerate_command_preview(player_state);
         }
         Task::none()
     }

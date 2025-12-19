@@ -1,6 +1,7 @@
 use iced::Task;
 
 use crate::app::{CrorecutApp, Message};
+use crate::handlers::regenerate_command_preview;
 use crate::video::VideoStreamInfo;
 
 impl CrorecutApp {
@@ -136,6 +137,7 @@ impl CrorecutApp {
     pub(crate) fn handle_trim_start_changed(&mut self, value: f64) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state {
             player_state.trim_start = value.min(player_state.trim_end - 0.1).max(0.0);
+            regenerate_command_preview(player_state);
             // Send `SliderChanged` so that user can instantly see the preview frame
             Task::done(Message::SliderChanged(player_state.trim_start))
         } else {
@@ -148,6 +150,7 @@ impl CrorecutApp {
             player_state.trim_end = value
                 .max(player_state.trim_start + 0.1)
                 .min(player_state.duration);
+            regenerate_command_preview(player_state);
             // Send `SliderChanged` so that user can instantly see the preview frame
             Task::done(Message::SliderChanged(player_state.trim_end))
         } else {

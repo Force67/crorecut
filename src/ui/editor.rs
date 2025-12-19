@@ -2,9 +2,6 @@ use crate::app::{Message, PlayerViewState, RenderStatus, Screen};
 use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
 use crate::utils::format_timestamp;
-use crate::video::{
-    CompressionParams, VideoDimensions, build_compression_command, build_ffmpeg_command,
-};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, rich_text, row, space, span, stack, svg,
@@ -232,58 +229,37 @@ fn render_status_row<'a>(status: &'a RenderStatus, target_size_mb: &str) -> Elem
 }
 
 fn command_section(state: &PlayerViewState) -> Element<'_, Message> {
-    let gray = iced::Color::from_rgb(0.6, 0.6, 0.6);
-    let cmd_gray = iced::Color::from_rgb(0.7, 0.7, 0.7);
+    column![
+        command_header(state),
+        mouse_area(
+            container(command_preview_text(state))
+                .padding(10)
+                .width(Length::Fill)
+                .style(|_theme| container::Style {
+                    background: Some(iced::Background::Color(iced::color!(0x1a1a1a))),
+                    border: iced::Border {
+                        color: iced::color!(0x4d4d4d),
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
+                }),
+        )
+        .on_enter(Message::CommandPreviewHovered(true))
+        .on_exit(Message::CommandPreviewHovered(false)),
+        render_status_row(&state.render_status, &state.target_size_mb)
+    ]
+    .spacing(8)
+    .padding(20)
+    .width(Length::Fill)
+    .into()
+}
 
-    let dimen = VideoDimensions {
-        video_width: state.video_width,
-        video_height: state.video_height,
-        preview_width: state.preview_width,
-        preview_height: state.preview_height,
-    };
-
-    let target_size: Option<f64> = state
-        .target_size_mb
-        .trim()
-        .parse()
-        .ok()
-        .filter(|&s: &f64| s > 0.0);
-
-    let (cmd_full, cmd_masked) = if let Some(target_size_mb) = target_size {
-        let params = CompressionParams {
-            target_size_mb,
-            duration_sec: state.duration,
-            audio_bitrate_bps: state.audio_bitrate_bps,
-        };
-        match build_compression_command(
-            &state.video_path,
-            &params,
-            state.crop_selection.as_ref(),
-            state.trim_start,
-            state.trim_end,
-            &dimen,
-        ) {
-            Ok(cmd) => (cmd.preview_full, cmd.preview_masked),
-            Err(e) => {
-                let err_msg = format!("Error: {}", e);
-                (err_msg.clone(), err_msg)
-            }
-        }
-    } else {
-        let cmd = build_ffmpeg_command(
-            &state.video_path,
-            state.crop_selection.as_ref(),
-            state.trim_start,
-            state.trim_end,
-            state.duration,
-            &dimen,
-        );
-        (cmd.full, cmd.masked)
-    };
-
-    let command_header = row![
+fn command_header(state: &PlayerViewState) -> iced::widget::Row<'_, Message> {
+    let gray = iced::color!(0x999999);
+    row![
         text("FFmpeg Command (").size(12).color(gray),
-        link_button("Copy", Message::CopyCommand(cmd_full.clone())),
+        link_button("Copy", Message::CopyCommand),
         text(" or ").size(12).color(gray),
         link_button("Run", Message::RunCommand),
         text(")").size(12).color(gray),
@@ -299,72 +275,49 @@ fn command_section(state: &PlayerViewState) -> Element<'_, Message> {
             .color(gray),
     ]
     .align_y(Alignment::Center)
-    .spacing(0);
+    .spacing(0)
+}
 
+fn command_preview_text(state: &PlayerViewState) -> iced::widget::text::Rich<'_, (), Message> {
+    let cmd_gray = iced::color!(0xb3b3b3);
+
+    let build_rich_text = |spans| -> iced::widget::text::Rich<'_, (), Message> {
+        rich_text::<(), Message, _, _>(spans)
+            .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+            .line_height(LineHeight::Relative(1.5))
+            .height(Length::Fixed(54.0))
+    };
+
+    if state.is_command_hovered {
+        return build_rich_text(vec![
+            span(&state.command_preview_full).size(12).color(cmd_gray),
+        ]);
+    }
+
+    let cmd_masked = &state.command_preview_masked;
+    if !cmd_masked.contains("{input}") || !cmd_masked.contains("{output}") {
+        return build_rich_text(vec![span(cmd_masked).size(12).color(cmd_gray)]);
+    }
+
+    // Highlight {input} and {output} placeholders
     let italic = Font {
         style: iced::font::Style::Italic,
         ..Font::default()
     };
+    let input_color = iced::Color::from_rgb(0.4, 0.9, 0.5);
+    let output_color = iced::Color::from_rgb(0.5, 0.7, 1.0);
 
-    let command_text: iced::widget::text::Rich<'_, (), Message> = if state.is_command_hovered {
-        rich_text::<(), Message, _, _>(vec![span(cmd_full).size(12).color(cmd_gray)])
-            .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
-            .line_height(LineHeight::Relative(1.5))
-            .height(Length::Fixed(54.0))
-    } else if cmd_masked.contains("{input}") && cmd_masked.contains("{output}") {
-        let parts: Vec<&str> = cmd_masked.split("{input}").collect();
-        let before_input = parts[0];
-        let after_input_parts: Vec<&str> = parts[1].split("{output}").collect();
-        let between = after_input_parts[0];
-        let after_output = after_input_parts.get(1).unwrap_or(&"");
+    let parts: Vec<&str> = cmd_masked.split("{input}").collect();
+    let before_input = parts[0];
+    let after_input_parts: Vec<&str> = parts[1].split("{output}").collect();
+    let between = after_input_parts[0];
+    let after_output = after_input_parts.get(1).unwrap_or(&"");
 
-        rich_text::<(), Message, _, _>(vec![
-            span(before_input.to_string()).size(12).color(cmd_gray),
-            span("input")
-                .size(12)
-                .color(iced::Color::from_rgb(0.4, 0.9, 0.5))
-                .font(italic),
-            span(between.to_string()).size(12).color(cmd_gray),
-            span("output")
-                .size(12)
-                .color(iced::Color::from_rgb(0.5, 0.7, 1.0))
-                .font(italic),
-            span(after_output.to_string()).size(12).color(cmd_gray),
-        ])
-        .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
-        .line_height(LineHeight::Relative(1.5))
-        .height(Length::Fixed(54.0))
-    } else {
-        rich_text::<(), Message, _, _>(vec![span(cmd_masked).size(12).color(cmd_gray)])
-            .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
-            .line_height(LineHeight::Relative(1.5))
-            .height(Length::Fixed(54.0))
-    };
-
-    column![
-        command_header,
-        mouse_area(
-            container(command_text)
-                .padding(10)
-                .width(Length::Fill)
-                .style(|_theme| container::Style {
-                    background: Some(iced::Background::Color(iced::Color::from_rgb(
-                        0.1, 0.1, 0.1,
-                    ))),
-                    border: iced::Border {
-                        color: iced::Color::from_rgb(0.3, 0.3, 0.3),
-                        width: 1.0,
-                        radius: 4.0.into(),
-                    },
-                    ..Default::default()
-                }),
-        )
-        .on_enter(Message::CommandPreviewHovered(true))
-        .on_exit(Message::CommandPreviewHovered(false)),
-        render_status_row(&state.render_status, &state.target_size_mb)
-    ]
-    .spacing(8)
-    .padding(20)
-    .width(Length::Fill)
-    .into()
+    build_rich_text(vec![
+        span(before_input.to_string()).size(12).color(cmd_gray),
+        span("input").size(12).color(input_color).font(italic),
+        span(between.to_string()).size(12).color(cmd_gray),
+        span("output").size(12).color(output_color).font(italic),
+        span(after_output.to_string()).size(12).color(cmd_gray),
+    ])
 }

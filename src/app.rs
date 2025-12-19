@@ -55,6 +55,7 @@ pub enum Message {
     GridScrollChanged(scrollable::Viewport),
 
     // Player View
+    PrepareEditor,
     FrameExtracted {
         request_id: u64,
         result: Result<Vec<u8>, String>,
@@ -77,7 +78,7 @@ pub enum Message {
     TrimEndChanged(f64),
 
     // Command display
-    CopyCommand(String),
+    CopyCommand,
     RunCommand,
     CommandCompleted(Result<PathBuf, String>),
     OpenFile(PathBuf),
@@ -144,6 +145,7 @@ impl CrorecutApp {
             }
 
             // Player handlers
+            Message::PrepareEditor => self.handle_prepare_editor(),
             Message::VideoStreamInfoReceived(result) => self.handle_video_stream_info(result),
             Message::FrameExtracted { request_id, result } => {
                 self.handle_frame_extracted(request_id, result)
@@ -163,7 +165,7 @@ impl CrorecutApp {
             Message::CropMouseReleased => self.handle_crop_mouse_released(),
 
             // Command handlers
-            Message::CopyCommand(cmd) => self.handle_copy_command(cmd),
+            Message::CopyCommand => self.handle_copy_command(),
             Message::RunCommand => self.handle_run_command(),
             Message::CommandCompleted(result) => self.handle_command_completed(result),
             Message::OpenFile(path) => self.handle_open_file(path),

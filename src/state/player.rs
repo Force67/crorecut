@@ -50,6 +50,10 @@ pub struct PlayerViewState {
     pub video_file_size_mb: f64,
     pub target_size_mb: String, // Target size for compression
 
+    // FFmpeg command for display in UI
+    pub command_preview_full: String,
+    pub command_preview_masked: String,
+
     // Streaming playback
     pub is_streaming: bool,
     pub seek_generation: u64,

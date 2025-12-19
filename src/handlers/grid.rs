@@ -176,6 +176,8 @@ impl CrorecutApp {
             is_command_hovered: false,
             target_size_mb: String::new(),
             video_file_size_mb: file_size_mb,
+            command_preview_full: String::new(),
+            command_preview_masked: String::new(),
             is_streaming: false,
             seek_generation: 0,
             audio_position: 0.0,
@@ -187,10 +189,12 @@ impl CrorecutApp {
         // Switch to editor screen
         self.screen = Screen::Editor;
 
-        // Get video stream info (initial frame extraction is triggered after info is received)
-        Task::perform(
-            async move { crate::video::get_video_stream_info(&video_path).await },
-            |result| Message::VideoStreamInfoReceived(result.map_err(|e| e.to_string())),
-        )
+        Task::batch([
+            Task::done(Message::PrepareEditor),
+            Task::perform(
+                async move { crate::video::get_video_stream_info(&video_path).await },
+                |result| Message::VideoStreamInfoReceived(result.map_err(|e| e.to_string())),
+            ),
+        ])
     }
 }

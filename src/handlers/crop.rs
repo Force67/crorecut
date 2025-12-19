@@ -1,6 +1,7 @@
 use iced::Task;
 
 use crate::app::{CrorecutApp, Message, ResizeHandle};
+use crate::handlers::regenerate_command_preview;
 use crate::state::SelectionState;
 use crate::ui::selection_canvas::CropSelection;
 
@@ -44,6 +45,7 @@ impl CrorecutApp {
                     start_y: canvas_y,
                 };
             }
+            regenerate_command_preview(player_state);
         }
         Task::none()
     }
@@ -121,6 +123,7 @@ impl CrorecutApp {
                 }
                 SelectionState::Idle => {}
             }
+            regenerate_command_preview(player_state);
         }
         Task::none()
     }
@@ -128,6 +131,7 @@ impl CrorecutApp {
     pub(crate) fn handle_crop_mouse_released(&mut self) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state {
             player_state.selection_state = SelectionState::Idle;
+            regenerate_command_preview(player_state);
         }
         Task::none()
     }
