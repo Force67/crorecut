@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use cpal::traits::{DeviceTrait, HostTrait};
 use iced::advanced::subscription::{self, Recipe};
 use iced::futures::SinkExt;
 use iced::futures::stream::BoxStream;
@@ -17,14 +18,8 @@ use super::audio_streaming::AudioStreaming;
 use super::clock::AudioClock;
 use super::player::{AudioPlayer, AudioRingBuffer};
 
-pub const SAMPLE_RATE: u32 = 48000;
-pub const CHANNELS: u16 = 2;
-
 /// How often to emit position updates
 const POSITION_UPDATE_INTERVAL: Duration = Duration::from_millis(33);
-
-/// How much audio to pre-buffer before starting playback (~100ms).
-const PRE_BUFFER_SAMPLES: usize = 48000 / 10 * 2; // 100ms of stereo audio
 
 /// Recipe for streaming audio via iced's subscription system.
 struct AudioStreamRecipe {
@@ -86,9 +81,10 @@ impl Recipe for AudioStreamRecipe {
 
                 let mut read_buffer = vec![0u8; 4096]; // 4KB chunks
 
-                // Pre-buffer before starting playback
+                // Pre-buffer before starting playback (~100ms)
+                let pre_buffer_samples = (sample_rate as usize * channels as usize) / 10;
                 log::info!("Pre-buffering audio...");
-                while ring_buffer.len() < PRE_BUFFER_SAMPLES {
+                while ring_buffer.len() < pre_buffer_samples {
                     match streaming.read_samples(&mut read_buffer).await {
                         Ok(0) => break,
                         Ok(n) => push_s16le_bytes(&ring_buffer, &read_buffer[..n]),
@@ -185,11 +181,18 @@ pub fn audio_stream_subscription(
     start_timestamp: f64,
     audio_clock: Arc<AudioClock>,
 ) -> iced::Subscription<crate::app::Message> {
+    // Query cpal's default output config
+    let (sample_rate, channels) = cpal::default_host()
+        .default_output_device()
+        .and_then(|device| device.default_output_config().ok())
+        .map(|config| (config.sample_rate().0, config.channels()))
+        .unwrap_or((48000, 2)); // Fallback to 48kHz stereo if query fails
+
     subscription::from_recipe(AudioStreamRecipe {
         video_path,
         start_timestamp,
-        sample_rate: SAMPLE_RATE,
-        channels: CHANNELS,
+        sample_rate,
+        channels,
         audio_clock,
     })
 }
