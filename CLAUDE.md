@@ -104,7 +104,7 @@ The codebase follows a clean separation of concerns:
 
 ### Multi-Screen Architecture
 
-The application uses a `Screen` enum to manage different views. The `view()` method routes to screen-specific view functions based on `current_screen`.
+The application uses a `Screen` enum to manage different views. The `view()` method routes to screen-specific view functions based on `screen`.
 
 ### FFmpeg Integration Pattern
 

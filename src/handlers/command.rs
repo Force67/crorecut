@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use iced::Task;
 
-use crate::app::{App, Message, RenderStatus};
+use crate::app::{CrorecutApp, Message, RenderStatus};
 
-impl App {
+impl CrorecutApp {
     pub(crate) fn handle_copy_command(&self, cmd: String) -> Task<Message> {
         iced::clipboard::write(cmd)
     }

@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::audio::AudioClock;
-use crate::ui::editor::ImageTransform;
 use crate::ui::selection_canvas::CropSelection;
+use crate::utils::ImageTransform;
 
 use super::SelectionState;
 
@@ -50,7 +50,7 @@ pub struct PlayerViewState {
     pub video_file_size_mb: f64,
     pub target_size_mb: String, // Target size for compression
 
-    // Streaming playback (experimental)
+    // Streaming playback
     pub is_streaming: bool,
     pub seek_generation: u64,
 

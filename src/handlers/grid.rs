@@ -4,14 +4,14 @@ use std::sync::Arc;
 use iced::Task;
 use iced::advanced::image;
 
-use crate::app::{App, Message};
+use crate::app::{CrorecutApp, Message};
 use crate::audio::AudioClock;
 use crate::state::{
     MAX_CONCURRENT_THUMBNAILS, PlayerViewState, RenderStatus, ScanStatus, SelectionState,
 };
 use crate::video::VideoMetadata;
 
-impl App {
+impl CrorecutApp {
     pub(crate) fn handle_scan_videos_directory(&mut self) -> Task<Message> {
         self.grid_state.scan_status = ScanStatus::Scanning;
 
@@ -185,7 +185,7 @@ impl App {
         });
 
         // Switch to editor screen
-        self.current_screen = Screen::Editor;
+        self.screen = Screen::Editor;
 
         // Get video stream info (initial frame extraction is triggered after info is received)
         Task::perform(

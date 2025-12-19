@@ -154,7 +154,7 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .into()
 }
 
-pub fn grid_view(videos: &[VideoItem]) -> Element<'_, Message> {
+pub fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
     if videos.is_empty() {
         return container(
             column![

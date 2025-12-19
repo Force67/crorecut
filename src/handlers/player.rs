@@ -1,9 +1,9 @@
 use iced::Task;
 
-use crate::app::{App, Message};
+use crate::app::{CrorecutApp, Message};
 use crate::video::VideoStreamInfo;
 
-impl App {
+impl CrorecutApp {
     pub(crate) fn handle_video_stream_info(
         &mut self,
         result: Result<VideoStreamInfo, String>,
@@ -155,7 +155,7 @@ impl App {
         }
     }
 
-    // Streaming handlers (experimental)
+    // Streaming handlers
 
     pub(crate) fn handle_start_streaming(&mut self) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state

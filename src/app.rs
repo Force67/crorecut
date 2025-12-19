@@ -4,10 +4,9 @@ use iced::widget::scrollable;
 use iced::{Element, Subscription, Task};
 
 use crate::state::{GridViewState, ScanStatus, grid_scrollable_id};
-use crate::ui::editor::editor_view;
+use crate::ui::editor::editor_screen;
 use crate::video::{VideoMetadata, VideoStreamInfo};
 
-// Re-export for ui and handler modules
 pub use crate::state::{PlayerViewState, RenderStatus, ResizeHandle};
 
 #[derive(Debug, Clone)]
@@ -18,19 +17,19 @@ pub enum Screen {
     About,
 }
 
-pub struct App {
-    pub(crate) current_screen: Screen,
+pub struct CrorecutApp {
+    pub(crate) screen: Screen,
     pub(crate) videos_directory: PathBuf,
     pub(crate) grid_state: GridViewState,
     pub(crate) player_state: Option<PlayerViewState>,
 }
 
-impl Default for App {
+impl Default for CrorecutApp {
     fn default() -> Self {
         let videos_dir = dirs::video_dir().unwrap_or_else(|| PathBuf::from("."));
 
         Self {
-            current_screen: Screen::Home,
+            screen: Screen::Home,
             videos_directory: videos_dir,
             grid_state: GridViewState::default(),
             player_state: None,
@@ -87,9 +86,9 @@ pub enum Message {
     CommandPreviewHovered(bool),
     TargetSizeChanged(String),
 
-    // Streaming playback (experimental)
-    StartStreamingFrames,
-    StopStreamingFrames,
+    // Streaming playback
+    StartPlayback,
+    StopPlayback,
     StreamedFrame {
         frame_bytes: Vec<u8>,
         timestamp: f64,
@@ -100,7 +99,7 @@ pub enum Message {
     AudioStreamEnded,
 }
 
-impl App {
+impl CrorecutApp {
     pub fn new() -> (Self, Task<Message>) {
         let app = Self::default();
         let initial_task = Task::perform(async { Message::ScanVideosDirectory }, |msg| msg);
@@ -117,7 +116,7 @@ impl App {
             Message::NavigateTo(screen) => {
                 let restore_scroll = matches!(screen, Screen::Home);
 
-                self.current_screen = screen;
+                self.screen = screen;
 
                 if restore_scroll {
                     iced::widget::operation::snap_to(
@@ -174,8 +173,8 @@ impl App {
             Message::TargetSizeChanged(value) => self.handle_target_size_changed(value),
 
             // Streaming handlers
-            Message::StartStreamingFrames => self.handle_start_streaming(),
-            Message::StopStreamingFrames => self.handle_stop_streaming(),
+            Message::StartPlayback => self.handle_start_streaming(),
+            Message::StopPlayback => self.handle_stop_streaming(),
             Message::StreamedFrame {
                 frame_bytes,
                 timestamp,
@@ -188,18 +187,18 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        match self.current_screen {
-            Screen::Home => self.home_view(&self.grid_state),
+        match self.screen {
+            Screen::Home => self.home_screen(&self.grid_state),
             Screen::Editor => {
                 if let Some(ref player_state) = self.player_state {
-                    editor_view(player_state)
+                    editor_screen(player_state)
                 } else {
                     // Fallback if no player state (shouldn't happen)
-                    self.home_view(&self.grid_state)
+                    self.home_screen(&self.grid_state)
                 }
             }
-            Screen::Settings => self.settings_view(),
-            Screen::About => self.about_view(),
+            Screen::Settings => self.settings_screen(),
+            Screen::About => self.about_screen(),
         }
     }
 
@@ -234,8 +233,8 @@ impl App {
         }
     }
 
-    fn home_view<'a>(&self, grid_state: &'a GridViewState) -> Element<'a, Message> {
-        use crate::ui::grid::grid_view;
+    fn home_screen<'a>(&self, grid_state: &'a GridViewState) -> Element<'a, Message> {
+        use crate::ui::grid::videos_grid;
         use iced::Length;
         use iced::widget::{column, container, text};
 
@@ -247,7 +246,7 @@ impl App {
                     .into()
             }
 
-            ScanStatus::Complete => grid_view(&grid_state.videos),
+            ScanStatus::Complete => videos_grid(&grid_state.videos),
 
             ScanStatus::Error(error_msg) => container(
                 column![
@@ -262,7 +261,7 @@ impl App {
         }
     }
 
-    fn settings_view(&self) -> Element<'_, Message> {
+    fn settings_screen(&self) -> Element<'_, Message> {
         use iced::Length;
         use iced::widget::container;
         use iced::widget::text;
@@ -273,7 +272,7 @@ impl App {
             .into()
     }
 
-    fn about_view(&self) -> Element<'_, Message> {
+    fn about_screen(&self) -> Element<'_, Message> {
         use iced::Length;
         use iced::widget::container;
         use iced::widget::text;

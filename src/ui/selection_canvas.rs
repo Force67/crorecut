@@ -2,7 +2,7 @@ use iced::widget::canvas::{Frame, Path, Stroke};
 use iced::{Event, Rectangle, mouse};
 
 use crate::app::Message;
-use crate::ui::editor::ImageTransform;
+use crate::utils::ImageTransform;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CropSelection {
