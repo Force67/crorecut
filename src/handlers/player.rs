@@ -17,6 +17,7 @@ impl App {
                     player_state.duration = info.duration;
                     player_state.trim_end = info.duration;
                     player_state.has_audio_stream = info.has_audio;
+                    player_state.audio_bitrate_bps = info.audio_bitrate_bps;
 
                     // Calculate preview dimensions (360p with maintained aspect ratio)
                     if info.height > 0 {

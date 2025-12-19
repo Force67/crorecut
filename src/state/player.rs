@@ -56,6 +56,7 @@ pub struct PlayerViewState {
 
     pub audio_position: f64,
     pub has_audio_stream: bool,
+    pub audio_bitrate_bps: Option<u64>,
     pub audio_clock: Arc<AudioClock>,
 }
 

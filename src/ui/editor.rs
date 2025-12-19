@@ -1,7 +1,9 @@
 use crate::app::{Message, PlayerViewState, RenderStatus, ResizeHandle, Screen};
 use crate::ui::range_slider::range_slider;
 use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
-use crate::video::{VideoDimensions, build_ffmpeg_command};
+use crate::video::{
+    CompressionParams, VideoDimensions, build_compression_command, build_ffmpeg_command,
+};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, rich_text, row, span, stack, svg, text,
@@ -348,21 +350,54 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         preview_width: player_state.preview_width,
         preview_height: player_state.preview_height,
     };
-    let ffmpeg_cmd = build_ffmpeg_command(
-        &player_state.video_path,
-        player_state.crop_selection.as_ref(),
-        player_state.trim_start,
-        player_state.trim_end,
-        player_state.duration,
-        &dimen,
-    );
+
+    let target_size: Option<f64> = player_state
+        .target_size_mb
+        .trim()
+        .parse()
+        .ok()
+        .filter(|&s: &f64| s > 0.0);
+
+    // Build either compression or regular command
+    let (cmd_full, cmd_masked) = if let Some(target_size_mb) = target_size {
+        let params = CompressionParams {
+            target_size_mb,
+            duration_sec: player_state.duration,
+            audio_bitrate_bps: player_state.audio_bitrate_bps,
+        };
+        match build_compression_command(
+            &player_state.video_path,
+            &params,
+            player_state.crop_selection.as_ref(),
+            player_state.trim_start,
+            player_state.trim_end,
+            &dimen,
+        ) {
+            Ok(cmd) => (cmd.preview_full, cmd.preview_masked),
+            Err(e) => {
+                // Show error in command preview
+                let err_msg = format!("Error: {}", e);
+                (err_msg.clone(), err_msg)
+            }
+        }
+    } else {
+        let cmd = build_ffmpeg_command(
+            &player_state.video_path,
+            player_state.crop_selection.as_ref(),
+            player_state.trim_start,
+            player_state.trim_end,
+            player_state.duration,
+            &dimen,
+        );
+        (cmd.full, cmd.masked)
+    };
 
     // Label with inline copy and run links
     let link_color = iced::Color::from_rgb(0.4, 0.7, 1.0);
     let gray = iced::Color::from_rgb(0.6, 0.6, 0.6);
 
     let copy_link = button(text("Copy").size(12).color(link_color))
-        .on_press(Message::CopyCommand(ffmpeg_cmd.full.clone()))
+        .on_press(Message::CopyCommand(cmd_full.clone()))
         .padding(0)
         .style(|_theme, _status| button::Style {
             background: None,
@@ -414,14 +449,14 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
 
     let command_text = if player_state.is_command_hovered {
         // Show full command with actual paths
-        rich_text(vec![span(ffmpeg_cmd.full.clone()).size(12).color(cmd_gray)])
+        rich_text(vec![span(cmd_full).size(12).color(cmd_gray)])
             .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
             .line_height(LineHeight::Relative(1.5))
             .height(Length::Fixed(54.0))
-    } else {
+    } else if cmd_masked.contains("{input}") && cmd_masked.contains("{output}") {
         // Show masked command with placeholders
         // Split by {input} and {output}, which always appear in that order
-        let parts: Vec<&str> = ffmpeg_cmd.masked.split("{input}").collect();
+        let parts: Vec<&str> = cmd_masked.split("{input}").collect();
         let before_input = parts[0];
         let after_input_parts: Vec<&str> = parts[1].split("{output}").collect();
         let between = after_input_parts[0];
@@ -442,6 +477,12 @@ pub fn editor_view<'a>(player_state: &'a PlayerViewState) -> Element<'a, Message
         ];
 
         rich_text(spans)
+            .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
+            .line_height(LineHeight::Relative(1.5))
+            .height(Length::Fixed(54.0))
+    } else {
+        // Plain text (e.g., error message)
+        rich_text(vec![span(cmd_masked).size(12).color(cmd_gray)])
             .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
             .line_height(LineHeight::Relative(1.5))
             .height(Length::Fixed(54.0))

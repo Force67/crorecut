@@ -21,6 +21,7 @@ pub struct VideoStreamInfo {
     pub fps: f64,
     pub duration: f64,
     pub has_audio: bool,
+    pub audio_bitrate_bps: Option<u64>,
 }
 
 /// Probe video stream info (dimensions, fps, duration, audio)
@@ -70,13 +71,24 @@ pub async fn get_video_stream_info(
         }
     }
 
+    let has_audio = has_audio_stream(video_path).await;
+    let audio_bitrate_bps = if has_audio {
+        get_audio_bitrate(video_path.to_path_buf())
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
     Ok(VideoStreamInfo {
         width: width.ok_or_else(|| FfmpegCommandError::CommandFailed("No video stream".into()))?,
         height: height.ok_or_else(|| FfmpegCommandError::CommandFailed("Missing height".into()))?,
         fps: fps.unwrap_or(30.0),
         duration: duration
             .ok_or_else(|| FfmpegCommandError::CommandFailed("Missing duration".into()))?,
-        has_audio: has_audio_stream(video_path).await,
+        has_audio,
+        audio_bitrate_bps,
     })
 }
 

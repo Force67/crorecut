@@ -143,6 +143,59 @@ pub struct TwoPassCommand {
     pub pass1_args: Vec<String>,
     pub pass2_args: Vec<String>,
     pub output_path: PathBuf,
+    pub preview_full: String,
+    pub preview_masked: String,
+}
+
+struct Pass2Builder {
+    exec: Vec<String>,
+    display: Vec<String>,
+    masked: Vec<String>,
+}
+
+impl Pass2Builder {
+    fn new() -> Self {
+        Self {
+            exec: vec!["-y".to_string()],
+            display: vec!["ffmpeg".to_string(), "-y".to_string()],
+            masked: vec!["ffmpeg".to_string(), "-y".to_string()],
+        }
+    }
+
+    fn push(&mut self, arg: impl Into<String>) {
+        let s = arg.into();
+        self.exec.push(s.clone());
+        self.display.push(s.clone());
+        self.masked.push(s);
+    }
+
+    fn extend(&mut self, args: impl IntoIterator<Item = String>) {
+        for arg in args {
+            self.push(arg);
+        }
+    }
+
+    fn input(&mut self, path: &str) {
+        self.exec.extend(["-i".to_string(), path.to_string()]);
+        self.display
+            .extend(["-i".to_string(), format!("\"{}\"", path)]);
+        self.masked
+            .extend(["-i".to_string(), "{input}".to_string()]);
+    }
+
+    fn output(&mut self, path: &str) {
+        self.exec.push(path.to_string());
+        self.display.push(format!("\"{}\"", path));
+        self.masked.push("{output}".to_string());
+    }
+
+    fn filter(&mut self, filter: &str) {
+        self.exec.extend(["-vf".to_string(), filter.to_string()]);
+        self.display
+            .extend(["-vf".to_string(), format!("\"{}\"", filter)]);
+        self.masked
+            .extend(["-vf".to_string(), format!("\"{}\"", filter)]);
+    }
 }
 
 /// Build crop filter string from selection and dimensions
@@ -257,18 +310,17 @@ pub fn build_compression_command(
 
     // Pass 2: Actual encoding
     let audio_bitrate_str = format!("{}k", audio_bitrate_kbps as u64);
-    let mut pass2_args = vec!["-y".to_string()];
-    pass2_args.extend(trim.before_input.iter().cloned());
-    pass2_args.extend(["-i".to_string(), input_str]);
-    pass2_args.extend(trim.after_input);
+    let mut pass2 = Pass2Builder::new();
 
-    // Add crop filter if present
-    if let Some(filter) = crop_filter {
-        pass2_args.push("-vf".to_string());
-        pass2_args.push(filter);
+    pass2.extend(trim.before_input.iter().cloned());
+    pass2.input(&input_str);
+    pass2.extend(trim.after_input);
+
+    if let Some(ref filter) = crop_filter {
+        pass2.filter(filter);
     }
 
-    pass2_args.extend([
+    pass2.extend([
         "-c:v".to_string(),
         "libx264".to_string(),
         "-b:v".to_string(),
@@ -277,23 +329,24 @@ pub fn build_compression_command(
         "2".to_string(),
     ]);
 
-    // Add audio encoding if there's audio
     if params.audio_bitrate_bps.is_some() {
-        pass2_args.extend([
+        pass2.extend([
             "-c:a".to_string(),
             "aac".to_string(),
             "-b:a".to_string(),
             audio_bitrate_str,
         ]);
     } else {
-        pass2_args.push("-an".to_string());
+        pass2.push("-an");
     }
 
-    pass2_args.push(output_str);
+    pass2.output(&output_str);
 
     Ok(TwoPassCommand {
         pass1_args,
-        pass2_args,
+        pass2_args: pass2.exec,
         output_path,
+        preview_full: pass2.display.join(" "),
+        preview_masked: pass2.masked.join(" "),
     })
 }

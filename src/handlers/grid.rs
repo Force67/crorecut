@@ -180,6 +180,7 @@ impl App {
             seek_generation: 0,
             audio_position: 0.0,
             has_audio_stream: false,
+            audio_bitrate_bps: None,
             audio_clock: Arc::new(AudioClock::new()),
         });
 
