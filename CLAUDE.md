@@ -9,26 +9,25 @@ Crorecut is a minimalistic video editing tool built with Rust and iced-rs, power
 ## Tech Stack
 
 - **Language**: Rust
-- **GUI Framework**: iced 0.15.0-dev (from "master" branch on GitHub)
+- **GUI Framework**: iced 0.15.0-dev (pinned via git in Cargo.toml)
   - **Enabled features**: `tokio`, `advanced`, `image`, `canvas`, `svg`
-- **Video Processing**: FFmpeg (via command-line subprocess execution)
+- **Video Processing**: FFmpeg (via subprocess) for frame extraction, transcoding, and real-time frame streaming
+- **Audio Playback**: cpal for cross-platform audio output, also via FFmpeg subprocess
 - **Async Runtime**: tokio for subprocess execution and async operations
 - **Configuration**: TOML with serde serialization
+- **Other**: `image` (frame handling), `open` (file/folder opening), `dirs` (platform paths)
 
 ## Development Commands
 
 ```bash
-# Build the project
-cargo build
-
 # Check code without building
 cargo check
 
+# Build the project
+cargo build
+
 # Run the application
 cargo run
-
-# Run in release mode
-cargo run --release
 
 # Run tests
 cargo test
@@ -40,9 +39,25 @@ cargo fmt
 cargo clippy
 ```
 
+## Directory Structure
+
+```
+src/
+    app.rs           # App struct, Message enum, update dispatcher
+    main.rs          # Entry point
+    icons.rs         # SVG icon constants
+    audio/           # Audio playback via cpal, A/V sync clock
+    config/          # Settings persistence (TOML)
+    handlers/        # Message handlers
+    state/           # State types
+    ui/              # View components
+    utils/           # Formatting helpers
+    video/           # FFmpeg operations, metadata, frame streaming
+```
+
 ## iced Documentation & Source Code Lookup
 
-**IMPORTANT**: This project uses `iced` version `0.15.0-dev` from the HEAD of the GitHub repository, not a stable release.
+**IMPORTANT**: This project uses `iced` from the HEAD of the GitHub repository, not a stable release.
 
 ### Documentation Preferences
 
@@ -89,7 +104,7 @@ The codebase follows a clean separation of concerns:
 
 ### Multi-Screen Architecture
 
-The application uses a `Screen` enum to manage different views (Home, Editor, Settings, etc.). The `view()` method routes to screen-specific view functions based on `current_screen`.
+The application uses a `Screen` enum to manage different views. The `view()` method routes to screen-specific view functions based on `current_screen`.
 
 ### FFmpeg Integration Pattern
 
@@ -108,9 +123,12 @@ FFmpeg operations are executed via tokio subprocess (`tokio::process::Command`):
 **Common FFmpeg operations:**
 - **Crop**: `-vf crop=w:h:x:y`
 - **Cut**: `-ss start_time -to end_time`
-- **Compress**: `-crf <value>` with codec settings
 - **Volume**: `-af volume=<factor>`
 - **Mute**: `-an` (remove audio stream)
+
+### Audio Playback
+
+Audio is decoded via FFmpeg subprocess (raw PCM output) and played through `cpal`. `AudioClock` provides A/V synchronization.
 
 ### UI Component Organization
 
@@ -118,15 +136,9 @@ FFmpeg operations are executed via tokio subprocess (`tokio::process::Command`):
 - **Use iced's canvas** for custom 2D graphics and overlays (requires `canvas` feature)
 - **Prefer `mouse_area`** for interactive regions that need custom cursor or event handling
 
-### Async Operations Pattern
-
-When spawning async work from the UI:
-1. Create a `Task::perform()` with an async block
-2. Return a `Message` variant when the operation completes
-3. Handle the result in the `update()` function
-4. Update state and trigger re-render
-
 ### Settings Management Pattern
+
+(This is not yet implemented!)
 
 Settings should:
 - Persist between sessions using TOML format with `serde`
