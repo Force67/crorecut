@@ -177,6 +177,7 @@ impl App {
             target_size_mb: String::new(),
             video_file_size_mb: file_size_mb,
             is_streaming: false,
+            seek_generation: 0,
             audio_position: 0.0,
             has_audio_stream: false,
             audio_clock: Arc::new(AudioClock::new()),

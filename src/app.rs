@@ -210,11 +210,11 @@ impl App {
                 let video_sub = crate::video::frame_streaming::frame_stream_subscription(
                     p.video_path.clone(),
                     p.timestamp,
-                    p.preview_width as u32,
-                    p.preview_height as u32,
+                    (p.preview_width as u32, p.preview_height as u32),
                     p.video_fps,
                     p.audio_clock.clone(),
                     p.has_audio_stream,
+                    p.seek_generation,
                 );
 
                 // Add audio subscription if video has audio track
@@ -223,6 +223,7 @@ impl App {
                         p.video_path.clone(),
                         p.timestamp,
                         p.audio_clock.clone(),
+                        p.seek_generation,
                     );
                     Subscription::batch([video_sub, audio_sub])
                 } else {

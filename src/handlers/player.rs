@@ -101,6 +101,12 @@ impl App {
             // Update timestamp immediately for responsive UI
             player_state.timestamp = new_timestamp;
 
+            // If streaming, increment seek_generation to restart subscriptions from new position
+            if player_state.is_streaming {
+                player_state.seek_generation += 1;
+                return Task::none();
+            }
+
             if player_state.is_extracting {
                 // Extraction in progress - store as pending
                 player_state.pending_timestamp = Some(new_timestamp);

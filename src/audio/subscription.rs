@@ -28,6 +28,7 @@ struct AudioStreamRecipe {
     sample_rate: u32,
     channels: u16,
     audio_clock: Arc<AudioClock>,
+    seek_generation: u64, // Changes on seek to force subscription restart
 }
 
 impl Recipe for AudioStreamRecipe {
@@ -36,6 +37,7 @@ impl Recipe for AudioStreamRecipe {
     fn hash(&self, state: &mut subscription::Hasher) {
         self.video_path.hash(state);
         "audio".hash(state);
+        self.seek_generation.hash(state);
     }
 
     fn stream(
@@ -180,6 +182,7 @@ pub fn audio_stream_subscription(
     video_path: PathBuf,
     start_timestamp: f64,
     audio_clock: Arc<AudioClock>,
+    seek_generation: u64,
 ) -> iced::Subscription<crate::app::Message> {
     // Query cpal's default output config
     let (sample_rate, channels) = cpal::default_host()
@@ -194,5 +197,6 @@ pub fn audio_stream_subscription(
         sample_rate,
         channels,
         audio_clock,
+        seek_generation,
     })
 }

@@ -107,19 +107,20 @@ impl Drop for FrameStreaming {
 struct FrameStreamRecipe {
     video_path: PathBuf,
     start_timestamp: f64,
-    width: u32,
-    height: u32,
+    dimensions: (u32, u32),
     fps: f64,
-    audio_clock: Arc<AudioClock>, // Shared audio clock for A/V sync
+    audio_clock: Arc<AudioClock>,
     has_audio: bool,
+    seek_generation: u64,
 }
 
 impl Recipe for FrameStreamRecipe {
     type Output = crate::app::Message;
 
     fn hash(&self, state: &mut subscription::Hasher) {
-        // Use video_path for identity - same video = same subscription
+        // Include seek_generation so subscription restarts on seek
         self.video_path.hash(state);
+        self.seek_generation.hash(state);
     }
 
     fn stream(
@@ -130,8 +131,7 @@ impl Recipe for FrameStreamRecipe {
 
         let video_path = self.video_path;
         let start_ts = self.start_timestamp;
-        let width = self.width;
-        let height = self.height;
+        let (width, height) = self.dimensions;
         let fps = self.fps;
         let audio_clock = self.audio_clock;
         let has_audio = self.has_audio;
@@ -211,19 +211,19 @@ impl Recipe for FrameStreamRecipe {
 pub fn frame_stream_subscription(
     video_path: PathBuf,
     start_timestamp: f64,
-    width: u32,
-    height: u32,
+    dimensions: (u32, u32),
     fps: f64,
     audio_clock: Arc<AudioClock>,
     has_audio: bool,
+    seek_generation: u64,
 ) -> iced::Subscription<crate::app::Message> {
     subscription::from_recipe(FrameStreamRecipe {
         video_path,
         start_timestamp,
-        width,
-        height,
+        dimensions,
         fps,
         audio_clock,
         has_audio,
+        seek_generation,
     })
 }

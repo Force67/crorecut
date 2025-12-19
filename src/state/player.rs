@@ -52,6 +52,7 @@ pub struct PlayerViewState {
 
     // Streaming playback (experimental)
     pub is_streaming: bool,
+    pub seek_generation: u64,
 
     pub audio_position: f64,
     pub has_audio_stream: bool,
