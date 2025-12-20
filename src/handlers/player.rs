@@ -1,10 +1,10 @@
 use iced::Task;
 
-use crate::app::{CrorecutApp, Message};
+use crate::app::{Crorecut, Message};
 use crate::handlers::regenerate_command_preview;
 use crate::video::VideoStreamInfo;
 
-impl CrorecutApp {
+impl Crorecut {
     pub(crate) fn handle_video_stream_info(
         &mut self,
         result: Result<VideoStreamInfo, String>,

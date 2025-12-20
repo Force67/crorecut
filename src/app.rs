@@ -17,14 +17,14 @@ pub enum Screen {
     About,
 }
 
-pub struct CrorecutApp {
+pub struct Crorecut {
     pub(crate) screen: Screen,
     pub(crate) videos_directory: PathBuf,
     pub(crate) grid_state: GridViewState,
     pub(crate) player_state: Option<PlayerViewState>,
 }
 
-impl Default for CrorecutApp {
+impl Default for Crorecut {
     fn default() -> Self {
         let videos_dir = dirs::video_dir().unwrap_or_else(|| PathBuf::from("."));
 
@@ -100,7 +100,7 @@ pub enum Message {
     AudioStreamEnded,
 }
 
-impl CrorecutApp {
+impl Crorecut {
     pub fn new() -> (Self, Task<Message>) {
         let app = Self::default();
         let initial_task = Task::perform(async { Message::ScanVideosDirectory }, |msg| msg);

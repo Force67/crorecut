@@ -4,14 +4,14 @@ use std::sync::Arc;
 use iced::Task;
 use iced::advanced::image;
 
-use crate::app::{CrorecutApp, Message};
+use crate::app::{Crorecut, Message};
 use crate::audio::AudioClock;
 use crate::state::{
     MAX_CONCURRENT_THUMBNAILS, PlayerViewState, RenderStatus, ScanStatus, SelectionState,
 };
 use crate::video::VideoMetadata;
 
-impl CrorecutApp {
+impl Crorecut {
     pub(crate) fn handle_scan_videos_directory(&mut self) -> Task<Message> {
         self.grid_state.scan_status = ScanStatus::Scanning;
 

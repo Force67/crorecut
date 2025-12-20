@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use iced::Task;
 
-use crate::app::{CrorecutApp, Message, RenderStatus};
+use crate::app::{Crorecut, Message, RenderStatus};
 use crate::state::PlayerViewState;
 use crate::video::{
     CompressionParams, VideoDimensions, build_compression_command, build_ffmpeg_command,
@@ -62,7 +62,7 @@ pub(crate) fn regenerate_command_preview(state: &mut PlayerViewState) {
     }
 }
 
-impl CrorecutApp {
+impl Crorecut {
     pub(crate) fn handle_copy_command(&self) -> Task<Message> {
         if let Some(state) = &self.player_state {
             iced::clipboard::write(state.command_preview_full.clone())

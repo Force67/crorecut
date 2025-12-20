@@ -1,11 +1,11 @@
 use iced::Task;
 
-use crate::app::{CrorecutApp, Message, ResizeHandle};
+use crate::app::{Crorecut, Message, ResizeHandle};
 use crate::handlers::regenerate_command_preview;
 use crate::state::SelectionState;
 use crate::ui::selection_canvas::CropSelection;
 
-impl CrorecutApp {
+impl Crorecut {
     pub(crate) fn handle_crop_mouse_pressed(&mut self) -> Task<Message> {
         if let Some(ref mut player_state) = self.player_state {
             let (canvas_x, canvas_y) = player_state.mouse_position;

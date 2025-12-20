@@ -14,7 +14,7 @@ mod ui;
 mod utils;
 mod video;
 
-use app::CrorecutApp;
+use app::Crorecut;
 
 fn main() -> iced::Result {
     env_logger::init();
@@ -23,9 +23,9 @@ fn main() -> iced::Result {
         iced::window::icon::from_file_data(icons::WINDOW_ICON, Some(image::ImageFormat::Ico))
             .expect("Failed to load window icon");
 
-    iced::application(CrorecutApp::new, CrorecutApp::update, CrorecutApp::view)
-        .title(CrorecutApp::title)
-        .subscription(CrorecutApp::subscription)
+    iced::application(Crorecut::new, Crorecut::update, Crorecut::view)
+        .title(Crorecut::title)
+        .subscription(Crorecut::subscription)
         .settings(iced::Settings {
             vsync: false,
             ..Default::default()
