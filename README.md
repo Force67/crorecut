@@ -1,6 +1,6 @@
 # <img height="40px" align="top" src="./assets/crorecut.ico">&nbsp;Crorecut
 
-A portable, tiny video editing tool for cropping and chopping some footage, and an FFmpeg wrapper 🎞️
+A tiny, portable, FFmpeg-based video editing tool to cut, crop and export share-ready clips 🎞️
 
 ### Features
 - Crop
