@@ -1,5 +1,6 @@
 use crate::app::Message;
 use crate::state::grid_scrollable_id;
+use crate::ui::ripple_button;
 use crate::video::VideoMetadata;
 use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
 use iced::{Alignment, Border, Element, Length};
@@ -154,18 +155,35 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .into()
 }
 
+fn refresh_section<'a>() -> Element<'a, Message> {
+    container(
+        ripple_button("Refresh videos")
+            .on_press(Message::ScanVideosDirectory)
+            .width(Length::Fill)
+            .height(Length::Fixed(44.0))
+            .background(iced::color!(0x383A3F))
+            .padding(12.0),
+    )
+    .padding([12, 20])
+    .width(Length::Fill)
+    .into()
+}
+
 pub fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
     if videos.is_empty() {
-        return container(
-            column![
-                text("No videos found").size(20),
-                text("Place video files in your Videos folder").size(14)
-            ]
-            .spacing(10)
-            .align_x(Alignment::Center),
-        )
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
+        return column![
+            refresh_section(),
+            container(
+                column![
+                    text("No videos found").size(20),
+                    text("Place video files in your Videos folder").size(14)
+                ]
+                .spacing(10)
+                .align_x(Alignment::Center),
+            )
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+        ]
         .into();
     }
 
@@ -174,8 +192,11 @@ pub fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
         .spacing(12)
         .height(grid::Sizing::AspectRatio(1.35)); // Slightly taller than 16:9 to fit text
 
-    scrollable(container(video_grid).padding(20).width(Length::Fill))
-        .id(grid_scrollable_id())
-        .on_scroll(Message::GridScrollChanged)
-        .into()
+    column![
+        refresh_section(),
+        scrollable(container(video_grid).padding(20).width(Length::Fill))
+            .id(grid_scrollable_id())
+            .on_scroll(Message::GridScrollChanged)
+    ]
+    .into()
 }
