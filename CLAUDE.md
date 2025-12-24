@@ -67,13 +67,31 @@ When looking up iced documentation, **ALWAYS** prefer:
 
 The docs.iced.rs site reflects the latest development version, while docs.rs only has stable releases.
 
-### Source Code Lookup Preferences
+### Source Code Lookup
 
-When looking up iced source code, **ALWAYS prefer raw GitHub URLs**:
-- **Correct**: `https://raw.githubusercontent.com/iced-rs/iced/refs/heads/master/widget/src/mouse_area.rs`
-- **Avoid**: `https://github.com/iced-rs/iced/blob/master/widget/src/mouse_area.rs`
+When looking up source code, **ALWAYS prefer raw GitHub URLs**:
+- **Correct**: `https://raw.githubusercontent.com/iced-rs/iced/refs/heads/master/core/src/widget.rs`
+- **Avoid**: `https://github.com/iced-rs/iced/blob/master/core/src/widget.rs`
 
 Raw GitHub URLs provide direct access to source code without HTML wrappers, making them faster and more reliable for programmatic access.
+
+More examples:
+- https://raw.githubusercontent.com/iced-rs/iced/refs/heads/master/examples/gallery/src/main.rs
+- https://raw.githubusercontent.com/iced-rs/iced/refs/heads/master/widget/src/button.rs
+- https://raw.githubusercontent.com/iced-rs/iced_aw/refs/heads/main/src/widget/color_picker.rs
+
+### Repository Exploration Workflow
+
+When exploring unfamiliar repositories, follow this two-step process:
+
+1. **Discover structure with GitHub API** - List files and directories:
+   - `https://api.github.com/repos/iced-rs/iced/contents/examples`
+   - `https://api.github.com/repos/iced-rs/iced_aw/contents/src`
+
+2. **Fetch file content with raw URLs** - Once you know what file you need:
+   - `https://raw.githubusercontent.com/iced-rs/iced/refs/heads/master/examples/game_of_life/src/main.rs`
+
+The API returns JSON with file/directory metadata (name, type, size). Use it to navigate, then switch to raw URLs for actual source code.
 
 ## Architecture Patterns
 
