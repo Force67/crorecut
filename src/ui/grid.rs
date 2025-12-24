@@ -1,8 +1,8 @@
 use crate::app::Message;
 use crate::state::grid_scrollable_id;
-use crate::ui::ripple_button;
+use crate::ui::ripple;
 use crate::video::VideoMetadata;
-use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
+use iced::widget::{button, column, container, grid, image, row, scrollable, stack, svg, text};
 use iced::{Alignment, Border, Element, Length};
 
 use crate::utils::format_duration_short;
@@ -155,15 +155,24 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .into()
 }
 
+// TODO: this doesn't belong here, move to home screen
 fn refresh_section<'a>() -> Element<'a, Message> {
-    container(
-        ripple_button("Refresh videos")
-            .on_press(Message::ScanVideosDirectory)
-            .width(Length::Fill)
-            .height(Length::Fixed(44.0))
-            .background(iced::color!(0x383A3F))
-            .padding(12.0),
-    )
+    container(ripple(
+        button(
+            text("Refresh videos")
+                .color(iced::Color::WHITE)
+                .width(Length::Fill)
+                .center(),
+        )
+        .on_press(Message::ScanVideosDirectory)
+        .width(Length::Fill)
+        .height(Length::Fixed(44.0))
+        .padding(12.0)
+        .style(|_theme, _status| button::Style {
+            background: Some(iced::color!(0x383A3F).into()),
+            ..Default::default()
+        }),
+    ))
     .padding([12, 20])
     .width(Length::Fill)
     .into()
