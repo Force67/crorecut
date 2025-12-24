@@ -2,7 +2,7 @@ use crate::app::Message;
 use crate::state::grid_scrollable_id;
 use crate::ui::ripple;
 use crate::video::VideoMetadata;
-use iced::widget::{button, column, container, grid, image, row, scrollable, stack, svg, text};
+use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
 use iced::{Alignment, Border, Element, Length};
 
 use crate::utils::format_duration_short;
