@@ -2,7 +2,7 @@ use iced::mouse;
 use iced::widget::canvas::{self, Action, Frame, Path};
 use iced::{Element, Event, Length, Point, Rectangle, Size};
 
-use crate::app::Message;
+use super::Message;
 
 const HANDLE_WIDTH: f32 = 12.0;
 const HANDLE_HEIGHT: f32 = 24.0;
@@ -77,7 +77,6 @@ impl canvas::Program<Message> for RangeSlider {
                 }
             }
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                // Helper to calculate value from x position
                 let calc_value = |x: f32| -> f64 {
                     let normalized = ((x - HANDLE_WIDTH) / track_width) as f64;
                     self.min + normalized.clamp(0.0, 1.0) * range
@@ -181,12 +180,10 @@ impl canvas::Program<Message> for RangeSlider {
         );
         frame.fill(&playhead, iced::color!(0xFFD144));
 
-        // Draw handles
         let handle_y = (bounds.height - HANDLE_HEIGHT) / 2.0;
         let handle_color = iced::Color::WHITE;
         let handle_border = iced::Color::from_rgb(0.4, 0.4, 0.4);
 
-        // Start handle
         let start_handle = Path::rectangle(
             Point::new(start_x - HANDLE_WIDTH / 2.0, handle_y),
             Size::new(HANDLE_WIDTH, HANDLE_HEIGHT),
@@ -199,7 +196,6 @@ impl canvas::Program<Message> for RangeSlider {
                 .with_width(1.0),
         );
 
-        // End handle
         let end_handle = Path::rectangle(
             Point::new(end_x - HANDLE_WIDTH / 2.0, handle_y),
             Size::new(HANDLE_WIDTH, HANDLE_HEIGHT),
@@ -237,14 +233,12 @@ impl canvas::Program<Message> for RangeSlider {
                 let end_x =
                     HANDLE_WIDTH + ((self.end_value - self.min) / range) as f32 * track_width;
 
-                // Check if hovering over either handle
                 if (cursor_position.x - start_x).abs() < HANDLE_WIDTH
                     || (cursor_position.x - end_x).abs() < HANDLE_WIDTH
                 {
                     return mouse::Interaction::Grab;
                 }
 
-                // Hovering over track - show pointer for scrubbing
                 return mouse::Interaction::Pointer;
             }
         }

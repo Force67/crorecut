@@ -21,6 +21,13 @@ use super::player::{AudioPlayer, AudioRingBuffer};
 /// How often to emit position updates
 const POSITION_UPDATE_INTERVAL: Duration = Duration::from_millis(33);
 
+/// Events emitted by the audio stream subscription
+#[derive(Debug, Clone)]
+pub enum AudioStreamEvent {
+    PositionUpdate(f64),
+    StreamEnded,
+}
+
 /// Recipe for streaming audio via iced's subscription system.
 struct AudioStreamRecipe {
     video_path: PathBuf,
@@ -32,7 +39,7 @@ struct AudioStreamRecipe {
 }
 
 impl Recipe for AudioStreamRecipe {
-    type Output = crate::app::Message;
+    type Output = AudioStreamEvent;
 
     fn hash(&self, state: &mut subscription::Hasher) {
         self.video_path.hash(state);
@@ -52,7 +59,7 @@ impl Recipe for AudioStreamRecipe {
 
         Box::pin(iced::stream::channel(
             1,
-            move |mut output: iced::futures::channel::mpsc::Sender<crate::app::Message>| async move {
+            move |mut output: iced::futures::channel::mpsc::Sender<AudioStreamEvent>| async move {
                 log::info!("Audio stream channel started, spawning ffmpeg...");
 
                 audio_clock.set_position(start_timestamp);
@@ -132,7 +139,7 @@ impl Recipe for AudioStreamRecipe {
                     // If FFmpeg is done and buffer is nearly empty, we're done
                     if ffmpeg_finished && ring_buffer.buffered_duration() < 0.05 {
                         log::info!("Audio buffer drained, ending playback");
-                        let _ = output.send(crate::app::Message::AudioStreamEnded).await;
+                        let _ = output.send(AudioStreamEvent::StreamEnded).await;
                         break;
                     }
 
@@ -142,7 +149,7 @@ impl Recipe for AudioStreamRecipe {
                     // Emit UI position updates at a slower interval
                     if last_position_update.elapsed() >= POSITION_UPDATE_INTERVAL {
                         if output
-                            .send(crate::app::Message::AudioPositionUpdate(position))
+                            .send(AudioStreamEvent::PositionUpdate(position))
                             .await
                             .is_err()
                         {
@@ -176,14 +183,14 @@ fn push_s16le_bytes(ring_buffer: &AudioRingBuffer, bytes: &[u8]) {
 /// The `audio_clock` is a shared clock that this subscription writes to.
 /// Video subscription should read from this clock to stay in sync.
 ///
-/// Emits `Message::AudioPositionUpdate` every ~50ms with the current audio position.
-/// Emits `Message::AudioStreamEnded` when the audio track ends.
+/// Emits `AudioStreamEvent::PositionUpdate` every ~50ms with the current audio position.
+/// Emits `AudioStreamEvent::StreamEnded` when the audio track ends.
 pub fn audio_stream_subscription(
     video_path: PathBuf,
     start_timestamp: f64,
     audio_clock: Arc<AudioClock>,
     seek_generation: u64,
-) -> iced::Subscription<crate::app::Message> {
+) -> iced::Subscription<AudioStreamEvent> {
     // Query cpal's default output config
     let (sample_rate, channels) = cpal::default_host()
         .default_output_device()

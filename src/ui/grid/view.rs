@@ -1,28 +1,39 @@
-use crate::app::Message;
-use crate::state::grid_scrollable_id;
-use crate::ui::ripple;
-use crate::video::VideoMetadata;
 use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
 use iced::{Alignment, Border, Element, Length};
 
+use super::Message;
+use super::grid::{Grid, ScanStatus, grid_scrollable_id};
+use super::video_item::{ThumbnailState, VideoItem};
+use crate::ui::ripple;
 use crate::utils::format_duration_short;
 
-#[derive(Debug, Clone)]
-pub enum ThumbnailState {
-    Pending,
-    Generating,
-    Ready(iced::advanced::image::Handle),
-    Failed(String),
+impl Grid {
+    pub fn view(&self) -> Element<'_, Message> {
+        match &self.scan_status {
+            ScanStatus::NotStarted | ScanStatus::Scanning => {
+                container(text("Scanning videos...").size(20))
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .into()
+            }
+
+            ScanStatus::Complete => videos_grid(&self.videos),
+
+            ScanStatus::Error(error_msg) => container(
+                column![
+                    text("Error scanning videos").size(20),
+                    text(error_msg).size(14),
+                ]
+                .spacing(10),
+            )
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into(),
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct VideoItem {
-    pub metadata: VideoMetadata,
-    pub thumbnail_state: ThumbnailState,
-    pub duration: Option<f64>,
-}
-
-pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
+fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
     let thumbnail_content = match &video.thumbnail_state {
         ThumbnailState::Pending => container(text("...").size(40))
             .center_x(Length::Fill)
@@ -155,7 +166,6 @@ pub fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .into()
 }
 
-// TODO: this doesn't belong here, move to home screen
 fn refresh_section<'a>() -> Element<'a, Message> {
     container(ripple(
         button(
@@ -178,7 +188,7 @@ fn refresh_section<'a>() -> Element<'a, Message> {
     .into()
 }
 
-pub fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
+fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
     if videos.is_empty() {
         return column![
             refresh_section(),
@@ -205,7 +215,7 @@ pub fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
         refresh_section(),
         scrollable(container(video_grid).padding(20).width(Length::Fill))
             .id(grid_scrollable_id())
-            .on_scroll(Message::GridScrollChanged)
+            .on_scroll(Message::ScrollChanged)
     ]
     .into()
 }

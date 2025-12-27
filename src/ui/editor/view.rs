@@ -1,7 +1,3 @@
-use crate::app::{Message, PlayerViewState, RenderStatus, Screen};
-use crate::ui::range_slider::range_slider;
-use crate::ui::selection_canvas::{CropSelection, SelectionCanvas};
-use crate::utils::format_timestamp;
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, rich_text, row, space, span, stack, svg,
@@ -9,27 +5,35 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Font, Length};
 
-pub fn editor_screen<'a>(state: &'a PlayerViewState) -> Element<'a, Message> {
-    column![
-        editor_header(&state.video_path),
-        frame_display(
-            state.frame_handle.as_ref(),
-            state.crop_selection,
-            state.preview_width,
-            state.preview_height,
-        ),
-        timeline(
-            state.timestamp,
-            state.duration,
-            state.trim_start,
-            state.trim_end,
-            state.is_streaming,
-        ),
-        command_section(state),
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+use super::Message;
+use super::editor::{Editor, RenderStatus};
+use super::range_slider::range_slider;
+use super::selection_canvas::{CropSelection, SelectionCanvas};
+use crate::utils::format_timestamp;
+
+impl Editor {
+    pub fn view(&self) -> Element<'_, Message> {
+        column![
+            editor_header(&self.video_path),
+            frame_display(
+                self.frame_handle.as_ref(),
+                self.crop_selection,
+                self.preview_width,
+                self.preview_height,
+            ),
+            timeline(
+                self.timestamp,
+                self.duration,
+                self.trim_start,
+                self.trim_end,
+                self.is_streaming,
+            ),
+            command_section(self),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    }
 }
 
 fn icon_button_style(_theme: &iced::Theme, status: button::Status) -> button::Style {
@@ -75,7 +79,7 @@ fn white_svg(data: &'static [u8], size: u32) -> iced::widget::Svg<'static> {
 fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
     row![
         button(white_svg(crate::icons::ARROW_SVG, 20))
-            .on_press(Message::NavigateTo(Screen::Home))
+            .on_press(Message::GoBack)
             .padding(10)
             .style(icon_button_style),
         button(white_svg(crate::icons::FOLDER_SVG, 20))
@@ -228,7 +232,7 @@ fn render_status_row<'a>(status: &'a RenderStatus, target_size_mb: &str) -> Elem
     }
 }
 
-fn command_section(state: &PlayerViewState) -> Element<'_, Message> {
+fn command_section(state: &Editor) -> Element<'_, Message> {
     column![
         command_header(state),
         mouse_area(
@@ -255,7 +259,7 @@ fn command_section(state: &PlayerViewState) -> Element<'_, Message> {
     .into()
 }
 
-fn command_header(state: &PlayerViewState) -> iced::widget::Row<'_, Message> {
+fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
     let gray = iced::color!(0x999999);
     row![
         text("FFmpeg Command (").size(12).color(gray),
@@ -278,7 +282,7 @@ fn command_header(state: &PlayerViewState) -> iced::widget::Row<'_, Message> {
     .spacing(0)
 }
 
-fn command_preview_text(state: &PlayerViewState) -> iced::widget::text::Rich<'_, (), Message> {
+fn command_preview_text(state: &Editor) -> iced::widget::text::Rich<'_, (), Message> {
     let cmd_gray = iced::color!(0xb3b3b3);
 
     let build_rich_text = |spans| -> iced::widget::text::Rich<'_, (), Message> {

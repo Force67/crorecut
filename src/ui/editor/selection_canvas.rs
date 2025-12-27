@@ -1,7 +1,7 @@
 use iced::widget::canvas::{Frame, Path, Stroke};
 use iced::{Event, Rectangle, mouse};
 
-use crate::app::Message;
+use super::Message;
 use crate::utils::ImageTransform;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

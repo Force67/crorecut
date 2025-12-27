@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::ui::selection_canvas::CropSelection;
+use crate::ui::editor::CropSelection;
 use crate::video::error::CompressionError;
 
 /// Video dimensions (original and preview)

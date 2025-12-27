@@ -10,6 +10,15 @@ use tokio::process::{Child, Command};
 
 use crate::audio::AudioClock;
 
+/// Events emitted by the frame stream subscription
+#[derive(Debug, Clone)]
+pub enum FrameStreamEvent {
+    FrameReady {
+        frame_bytes: Vec<u8>,
+        timestamp: f64,
+    },
+}
+
 #[cfg(windows)]
 #[allow(unused_imports)]
 use std::os::windows::process::CommandExt;
@@ -115,7 +124,7 @@ struct FrameStreamRecipe {
 }
 
 impl Recipe for FrameStreamRecipe {
-    type Output = crate::app::Message;
+    type Output = FrameStreamEvent;
 
     fn hash(&self, state: &mut subscription::Hasher) {
         // Include seek_generation so subscription restarts on seek
@@ -138,7 +147,7 @@ impl Recipe for FrameStreamRecipe {
 
         Box::pin(iced::stream::channel(
             1,
-            move |mut output: iced::futures::channel::mpsc::Sender<crate::app::Message>| async move {
+            move |mut output: iced::futures::channel::mpsc::Sender<FrameStreamEvent>| async move {
                 log::info!("Frame stream channel started, spawning ffmpeg...");
 
                 // Create the streamer
@@ -188,7 +197,7 @@ impl Recipe for FrameStreamRecipe {
                         tokio::time::sleep(frame_delay).await;
                     }
 
-                    let msg = crate::app::Message::StreamedFrame {
+                    let msg = FrameStreamEvent::FrameReady {
                         frame_bytes: frame,
                         timestamp: next_frame_ts,
                     };
@@ -206,7 +215,7 @@ impl Recipe for FrameStreamRecipe {
 
 /// Creates an iced subscription that streams frames from a video.
 ///
-/// The subscription yields `Message::StreamedFrame` messages continuously
+/// The subscription yields `FrameStreamEvent::FrameReady` messages continuously
 /// until it's cancelled (by returning `Subscription::none()` when is_streaming becomes false).
 pub fn frame_stream_subscription(
     video_path: PathBuf,
@@ -216,7 +225,7 @@ pub fn frame_stream_subscription(
     audio_clock: Arc<AudioClock>,
     has_audio: bool,
     seek_generation: u64,
-) -> iced::Subscription<crate::app::Message> {
+) -> iced::Subscription<FrameStreamEvent> {
     subscription::from_recipe(FrameStreamRecipe {
         video_path,
         start_timestamp,

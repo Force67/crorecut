@@ -1,0 +1,859 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use iced::Subscription;
+use iced::Task;
+
+use super::selection_canvas::CropSelection;
+use crate::audio::AudioClock;
+use crate::utils::ImageTransform;
+use crate::video::{
+    CompressionParams, VideoDimensions, VideoStreamInfo, build_compression_command,
+    build_ffmpeg_command,
+};
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum RenderStatus {
+    #[default]
+    Idle,
+    Rendering,
+    Completed(PathBuf),
+    Failed(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ResizeHandle {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelectionState {
+    Idle,
+    Creating {
+        start_x: f32,
+        start_y: f32,
+    },
+    Moving {
+        offset_x: f32,
+        offset_y: f32,
+    },
+    Resizing {
+        handle: ResizeHandle,
+        original: CropSelection,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct Editor {
+    pub video_path: PathBuf,
+    pub duration: f64,
+    pub video_width: u32,
+    pub video_height: u32,
+    pub video_fps: f64,
+    pub preview_width: f32,
+    pub preview_height: f32,
+    pub video_file_size_mb: f64,
+
+    // Frame display
+    pub frame_handle: Option<iced::advanced::image::Handle>,
+    pub timestamp: f64,
+
+    // Extraction state
+    pub is_extracting: bool,
+    pub last_extraction_request_id: u64,
+    pub pending_timestamp: Option<f64>,
+
+    // Crop selection (in preview image space, not canvas space)
+    pub crop_selection: Option<CropSelection>,
+    pub selection_state: SelectionState,
+    pub mouse_position: (f32, f32),
+    pub canvas_bounds: (f32, f32),
+
+    // Trim
+    pub trim_start: f64,
+    pub trim_end: f64,
+
+    // Command
+    pub render_status: RenderStatus,
+    pub is_command_hovered: bool,
+    pub target_size_mb: String,
+    pub command_preview_full: String,
+    pub command_preview_masked: String,
+
+    // Streaming
+    pub is_streaming: bool,
+    pub seek_generation: u64,
+
+    // Audio
+    pub audio_position: f64,
+    pub has_audio_stream: bool,
+    pub audio_bitrate_bps: Option<u64>,
+    pub audio_clock: Arc<AudioClock>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    // Initialization
+    PrepareEditor,
+    VideoStreamInfoReceived(Result<VideoStreamInfo, String>),
+
+    // Frame extraction
+    FrameExtracted {
+        request_id: u64,
+        result: Result<Vec<u8>, String>,
+    },
+    SliderChanged(f64),
+
+    // Crop selection
+    CropMousePressed,
+    CropMouseMoved {
+        x: f32,
+        y: f32,
+        canvas_width: f32,
+        canvas_height: f32,
+    },
+    CropMouseReleased,
+
+    // Trim selection
+    TrimStartChanged(f64),
+    TrimEndChanged(f64),
+
+    // Command
+    CopyCommand,
+    RunCommand,
+    CommandCompleted(Result<PathBuf, String>),
+    OpenFile(PathBuf),
+    DeleteFile(PathBuf),
+    OpenParentDir(PathBuf),
+    CommandPreviewHovered(bool),
+    TargetSizeChanged(String),
+
+    // Streaming
+    StartPlayback,
+    StopPlayback,
+    StreamedFrame {
+        frame_bytes: Vec<u8>,
+        timestamp: f64,
+    },
+
+    // Audio
+    AudioPositionUpdate(f64),
+    AudioStreamEnded,
+
+    // Navigation
+    GoBack,
+}
+
+impl Editor {
+    pub fn new(video_path: PathBuf) -> Self {
+        let file_size_mb = std::fs::metadata(&video_path)
+            .map(|m| m.len() as f64 / (1024.0 * 1024.0))
+            .unwrap_or(0.0);
+
+        Self {
+            video_path,
+            duration: 0.0,
+            video_width: 0,
+            video_height: 0,
+            video_fps: 30.0,
+            preview_width: 0.0,
+            preview_height: 360.0,
+            video_file_size_mb: file_size_mb,
+
+            frame_handle: None,
+            timestamp: 0.0,
+
+            is_extracting: false,
+            last_extraction_request_id: 0,
+            pending_timestamp: None,
+
+            crop_selection: None,
+            selection_state: SelectionState::Idle,
+            mouse_position: (0.0, 0.0),
+            canvas_bounds: (1.0, 1.0),
+
+            trim_start: 0.0,
+            trim_end: 0.0,
+
+            render_status: RenderStatus::Idle,
+            is_command_hovered: false,
+            target_size_mb: String::new(),
+            command_preview_full: String::new(),
+            command_preview_masked: String::new(),
+
+            is_streaming: false,
+            seek_generation: 0,
+
+            audio_position: 0.0,
+            has_audio_stream: false,
+            audio_bitrate_bps: None,
+            audio_clock: Arc::new(AudioClock::new()),
+        }
+    }
+
+    pub fn get_image_transform(&self) -> ImageTransform {
+        ImageTransform::from_contain(
+            self.canvas_bounds.0,
+            self.canvas_bounds.1,
+            self.preview_width,
+            self.preview_height,
+        )
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        if self.is_streaming {
+            let video_sub = crate::video::frame_streaming::frame_stream_subscription(
+                self.video_path.clone(),
+                self.timestamp,
+                (self.preview_width as u32, self.preview_height as u32),
+                self.video_fps,
+                self.audio_clock.clone(),
+                self.has_audio_stream,
+                self.seek_generation,
+            )
+            .map(|event| match event {
+                crate::video::frame_streaming::FrameStreamEvent::FrameReady {
+                    frame_bytes,
+                    timestamp,
+                } => Message::StreamedFrame {
+                    frame_bytes,
+                    timestamp,
+                },
+            });
+
+            if self.has_audio_stream {
+                let audio_sub = crate::audio::audio_stream_subscription(
+                    self.video_path.clone(),
+                    self.timestamp,
+                    self.audio_clock.clone(),
+                    self.seek_generation,
+                )
+                .map(|event| match event {
+                    crate::audio::AudioStreamEvent::PositionUpdate(pos) => {
+                        Message::AudioPositionUpdate(pos)
+                    }
+                    crate::audio::AudioStreamEvent::StreamEnded => Message::AudioStreamEnded,
+                });
+                Subscription::batch([video_sub, audio_sub])
+            } else {
+                video_sub
+            }
+        } else {
+            Subscription::none()
+        }
+    }
+
+    pub fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::PrepareEditor => {
+                self.regenerate_command_preview();
+                Task::none()
+            }
+
+            Message::VideoStreamInfoReceived(result) => match result {
+                Ok(info) => self.apply_video_stream_info(info),
+                Err(error_msg) => {
+                    log::error!("Failed to get video info: {error_msg}");
+                    Task::none()
+                }
+            },
+
+            Message::FrameExtracted { request_id, result } => {
+                self.apply_frame_extracted(request_id, result)
+            }
+
+            Message::SliderChanged(new_timestamp) => self.apply_slider_changed(new_timestamp),
+
+            Message::CropMousePressed => {
+                self.apply_crop_mouse_pressed();
+                Task::none()
+            }
+
+            Message::CropMouseMoved {
+                x,
+                y,
+                canvas_width,
+                canvas_height,
+            } => {
+                self.apply_crop_mouse_moved(x, y, canvas_width, canvas_height);
+                Task::none()
+            }
+
+            Message::CropMouseReleased => {
+                self.selection_state = SelectionState::Idle;
+                self.regenerate_command_preview();
+                Task::none()
+            }
+
+            Message::TrimStartChanged(value) => {
+                self.trim_start = value.min(self.trim_end - 0.1).max(0.0);
+                self.regenerate_command_preview();
+                Task::done(Message::SliderChanged(self.trim_start))
+            }
+
+            Message::TrimEndChanged(value) => {
+                self.trim_end = value.max(self.trim_start + 0.1).min(self.duration);
+                self.regenerate_command_preview();
+                Task::done(Message::SliderChanged(self.trim_end))
+            }
+
+            Message::CopyCommand => iced::clipboard::write(self.command_preview_full.clone()),
+
+            Message::RunCommand => self.run_command(),
+
+            Message::CommandCompleted(result) => {
+                match result {
+                    Ok(output_path) => {
+                        log::info!("Command completed successfully");
+                        self.render_status = RenderStatus::Completed(output_path);
+                    }
+                    Err(ref error_msg) => {
+                        log::error!("Command failed: {error_msg}");
+                        self.render_status = RenderStatus::Failed(error_msg.clone());
+                    }
+                }
+                Task::none()
+            }
+
+            Message::OpenFile(path) => {
+                if let Err(e) = open::that_detached(&path) {
+                    log::error!("Failed to open file: {e}");
+                }
+                Task::none()
+            }
+
+            Message::DeleteFile(path) => {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {
+                        log::info!("Deleted file: {}", path.display());
+                        self.render_status = RenderStatus::Idle;
+                    }
+                    Err(e) => {
+                        log::error!("Failed to delete file: {e}");
+                    }
+                }
+                Task::none()
+            }
+
+            Message::OpenParentDir(filepath) => {
+                #[cfg(windows)]
+                {
+                    if let Err(e) = std::process::Command::new("explorer.exe")
+                        .arg("/select,")
+                        .arg(&filepath)
+                        .spawn()
+                    {
+                        log::error!("Failed to open Explorer with file selected: {e}");
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    if let Some(parent) = filepath.parent() {
+                        if let Err(e) = open::that_detached(parent) {
+                            log::error!("Failed to open parent directory: {e}");
+                        }
+                    } else {
+                        log::warn!("Path has no parent directory: {}", filepath.display());
+                    }
+                }
+                Task::none()
+            }
+
+            Message::CommandPreviewHovered(hovered) => {
+                self.is_command_hovered = hovered;
+                Task::none()
+            }
+
+            Message::TargetSizeChanged(value) => {
+                self.target_size_mb = value;
+                self.regenerate_command_preview();
+                Task::none()
+            }
+
+            Message::StartPlayback => {
+                if !self.is_streaming {
+                    log::info!("Starting frame streaming at timestamp {}", self.timestamp);
+                    self.is_streaming = true;
+                }
+                Task::none()
+            }
+
+            Message::StopPlayback => {
+                if self.is_streaming {
+                    log::info!("Stopping frame streaming");
+                    self.is_streaming = false;
+                }
+                Task::none()
+            }
+
+            Message::StreamedFrame {
+                frame_bytes,
+                timestamp,
+            } => {
+                if self.is_streaming {
+                    self.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
+                        self.preview_width as u32,
+                        self.preview_height as u32,
+                        frame_bytes,
+                    ));
+                    self.timestamp = timestamp;
+                }
+                Task::none()
+            }
+
+            Message::AudioPositionUpdate(position) => {
+                if self.is_streaming {
+                    self.audio_position = position;
+                }
+                Task::none()
+            }
+
+            Message::AudioStreamEnded => {
+                log::info!("Audio stream ended, stopping playback");
+                self.is_streaming = false;
+                Task::none()
+            }
+
+            Message::GoBack => {
+                // Navigation is handled at app level
+                Task::none()
+            }
+        }
+    }
+
+    fn apply_video_stream_info(&mut self, info: VideoStreamInfo) -> Task<Message> {
+        self.video_width = info.width;
+        self.video_height = info.height;
+        self.video_fps = info.fps;
+        self.duration = info.duration;
+        self.trim_end = info.duration;
+        self.has_audio_stream = info.has_audio;
+        self.audio_bitrate_bps = info.audio_bitrate_bps;
+
+        // Calculate preview dimensions (360p with maintained aspect ratio)
+        if info.height > 0 {
+            self.preview_width = (info.width as f32 * 360.0) / info.height as f32;
+            self.preview_height = 360.0;
+        }
+
+        log::info!(
+            "Video: {}x{} @ {:.2}fps, {:.2}s, audio: {}",
+            info.width,
+            info.height,
+            info.fps,
+            info.duration,
+            if info.has_audio { "yes" } else { "no" }
+        );
+
+        // Now that dimensions are set, extract initial frame
+        let video_path = self.video_path.clone();
+        Task::perform(
+            async move {
+                crate::video::extract_frame(video_path, 0.0)
+                    .await
+                    .map_err(|e| e.to_string())
+            },
+            |result| Message::FrameExtracted {
+                request_id: 0,
+                result,
+            },
+        )
+    }
+
+    fn apply_frame_extracted(
+        &mut self,
+        request_id: u64,
+        result: Result<Vec<u8>, String>,
+    ) -> Task<Message> {
+        // Only accept frame from most recent extraction
+        if request_id != self.last_extraction_request_id {
+            log::debug!(
+                "Discarding stale frame (request_id {} != current {})",
+                request_id,
+                self.last_extraction_request_id
+            );
+            return Task::none();
+        }
+
+        match result {
+            Ok(frame_bytes) => {
+                self.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
+                    self.preview_width as u32,
+                    self.preview_height as u32,
+                    frame_bytes,
+                ));
+            }
+            Err(error_msg) => {
+                log::error!("Frame extraction failed: {error_msg}");
+            }
+        }
+
+        self.is_extracting = false;
+
+        if let Some(pending_ts) = self.pending_timestamp.take() {
+            self.apply_slider_changed(pending_ts)
+        } else {
+            Task::none()
+        }
+    }
+
+    fn apply_slider_changed(&mut self, new_timestamp: f64) -> Task<Message> {
+        // Update timestamp immediately for responsive UI
+        self.timestamp = new_timestamp;
+
+        // If streaming, increment seek_generation to restart subscriptions from new position
+        if self.is_streaming {
+            self.seek_generation += 1;
+            return Task::none();
+        }
+
+        if self.is_extracting {
+            // Extraction in progress - store as pending
+            self.pending_timestamp = Some(new_timestamp);
+            Task::none()
+        } else {
+            // No extraction in progress - spawn FFmpeg immediately
+            self.is_extracting = true;
+            self.last_extraction_request_id += 1;
+            self.pending_timestamp = None;
+
+            let video_path = self.video_path.clone();
+            let request_id = self.last_extraction_request_id;
+
+            Task::perform(
+                async move {
+                    crate::video::extract_frame(video_path, new_timestamp)
+                        .await
+                        .map_err(|e| e.to_string())
+                },
+                move |result| Message::FrameExtracted { request_id, result },
+            )
+        }
+    }
+
+    fn apply_crop_mouse_pressed(&mut self) {
+        let (canvas_x, canvas_y) = self.mouse_position;
+
+        // Transform from canvas space to image space
+        let transform = self.get_image_transform();
+        let (img_x, img_y) = transform.canvas_to_image(canvas_x, canvas_y);
+
+        // Check if clicking on an existing selection
+        if let Some(selection) = self.crop_selection {
+            if let Some(handle) = get_resize_handle(img_x, img_y, &selection) {
+                self.selection_state = SelectionState::Resizing {
+                    handle,
+                    original: selection,
+                };
+            } else if point_in_selection(img_x, img_y, &selection) {
+                self.selection_state = SelectionState::Moving {
+                    offset_x: img_x - selection.x,
+                    offset_y: img_y - selection.y,
+                };
+            } else {
+                self.crop_selection = None;
+                self.selection_state = SelectionState::Creating {
+                    start_x: canvas_x,
+                    start_y: canvas_y,
+                };
+            }
+        } else {
+            self.selection_state = SelectionState::Creating {
+                start_x: canvas_x,
+                start_y: canvas_y,
+            };
+        }
+        self.regenerate_command_preview();
+    }
+
+    fn apply_crop_mouse_moved(&mut self, x: f32, y: f32, canvas_width: f32, canvas_height: f32) {
+        // Update canvas bounds with actual values from canvas
+        self.canvas_bounds = (canvas_width, canvas_height);
+
+        // Transform from canvas space to image space
+        let transform = self.get_image_transform();
+        let (img_x, img_y) = transform.canvas_to_image(x, y);
+
+        // Store mouse position in canvas space
+        self.mouse_position = (x, y);
+
+        match self.selection_state {
+            SelectionState::Creating { start_x, start_y } => {
+                // Transform start position from canvas to image space
+                let (start_img_x, start_img_y) = transform.canvas_to_image(start_x, start_y);
+
+                // Create selection in image space with clamped bounds
+                let min_x = start_img_x.min(img_x).clamp(0.0, self.preview_width);
+                let min_y = start_img_y.min(img_y).clamp(0.0, self.preview_height);
+                let max_x = start_img_x.max(img_x).clamp(0.0, self.preview_width);
+                let max_y = start_img_y.max(img_y).clamp(0.0, self.preview_height);
+
+                self.crop_selection = Some(CropSelection {
+                    x: min_x,
+                    y: min_y,
+                    width: max_x - min_x,
+                    height: max_y - min_y,
+                });
+            }
+            SelectionState::Moving { offset_x, offset_y } => {
+                if let Some(ref mut selection) = self.crop_selection {
+                    let new_x = img_x - offset_x;
+                    let new_y = img_y - offset_y;
+
+                    // Clamp to keep selection within image bounds
+                    selection.x = new_x.clamp(0.0, self.preview_width - selection.width);
+                    selection.y = new_y.clamp(0.0, self.preview_height - selection.height);
+                }
+            }
+            SelectionState::Resizing { handle, original } => {
+                if let Some(ref mut selection) = self.crop_selection {
+                    resize_selection(selection, handle, img_x, img_y, &original);
+
+                    // Clamp selection to image bounds
+                    selection.x = selection.x.clamp(0.0, self.preview_width);
+                    selection.y = selection.y.clamp(0.0, self.preview_height);
+                    selection.width = selection
+                        .width
+                        .clamp(10.0, self.preview_width - selection.x);
+                    selection.height = selection
+                        .height
+                        .clamp(10.0, self.preview_height - selection.y);
+                }
+            }
+            SelectionState::Idle => {}
+        }
+        self.regenerate_command_preview();
+    }
+
+    fn run_command(&mut self) -> Task<Message> {
+        self.render_status = RenderStatus::Rendering;
+
+        let video_path = self.video_path.clone();
+        let crop_selection = self.crop_selection;
+        let trim_start = self.trim_start;
+        let trim_end = self.trim_end;
+        let duration = self.duration;
+        let video_width = self.video_width;
+        let video_height = self.video_height;
+        let preview_width = self.preview_width;
+        let preview_height = self.preview_height;
+        let target_size_str = self.target_size_mb.clone();
+
+        // Check if compression is enabled
+        let target_size: Option<f64> = target_size_str
+            .trim()
+            .parse()
+            .ok()
+            .filter(|&s: &f64| s > 0.0);
+
+        if let Some(target_size_mb) = target_size {
+            // Two-pass mode with compression
+            Task::perform(
+                async move {
+                    // Get audio bitrate
+                    let audio_bitrate = crate::video::get_audio_bitrate(video_path.clone())
+                        .await
+                        .map_err(|e| e.to_string())?;
+
+                    let dimen = VideoDimensions {
+                        video_width,
+                        video_height,
+                        preview_width,
+                        preview_height,
+                    };
+
+                    let params = CompressionParams {
+                        target_size_mb,
+                        duration_sec: duration,
+                        audio_bitrate_bps: audio_bitrate,
+                    };
+
+                    let cmd = build_compression_command(
+                        &video_path,
+                        &params,
+                        crop_selection.as_ref(),
+                        trim_start,
+                        trim_end,
+                        &dimen,
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                    let working_dir = video_path
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| PathBuf::from("."));
+
+                    crate::video::run_two_pass_compression(
+                        cmd.pass1_args,
+                        cmd.pass2_args,
+                        working_dir,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                    Ok(cmd.output_path)
+                },
+                Message::CommandCompleted,
+            )
+        } else {
+            // Single-pass mode (no compression)
+            let dimen = VideoDimensions {
+                video_width,
+                video_height,
+                preview_width,
+                preview_height,
+            };
+
+            let ffmpeg_cmd = build_ffmpeg_command(
+                &video_path,
+                crop_selection.as_ref(),
+                trim_start,
+                trim_end,
+                duration,
+                &dimen,
+            );
+
+            let args = ffmpeg_cmd.args;
+            let output_path = ffmpeg_cmd.output_path;
+
+            Task::perform(
+                async move {
+                    crate::video::run_ffmpeg_command(&args).await?;
+                    Ok(output_path)
+                },
+                |result: Result<PathBuf, crate::video::error::FfmpegCommandError>| {
+                    Message::CommandCompleted(result.map_err(|e| e.to_string()))
+                },
+            )
+        }
+    }
+
+    fn regenerate_command_preview(&mut self) {
+        let dimen = VideoDimensions {
+            video_width: self.video_width,
+            video_height: self.video_height,
+            preview_width: self.preview_width,
+            preview_height: self.preview_height,
+        };
+
+        let target_size: Option<f64> = self
+            .target_size_mb
+            .trim()
+            .parse()
+            .ok()
+            .filter(|&s: &f64| s > 0.0);
+
+        if let Some(target_size_mb) = target_size {
+            let params = CompressionParams {
+                target_size_mb,
+                duration_sec: self.duration,
+                audio_bitrate_bps: self.audio_bitrate_bps,
+            };
+            match build_compression_command(
+                &self.video_path,
+                &params,
+                self.crop_selection.as_ref(),
+                self.trim_start,
+                self.trim_end,
+                &dimen,
+            ) {
+                Ok(cmd) => {
+                    self.command_preview_full = cmd.preview_full;
+                    self.command_preview_masked = cmd.preview_masked;
+                }
+                Err(e) => {
+                    let err_msg = format!("Error: {}", e);
+                    self.command_preview_full = err_msg.clone();
+                    self.command_preview_masked = err_msg;
+                }
+            }
+        } else {
+            let cmd = build_ffmpeg_command(
+                &self.video_path,
+                self.crop_selection.as_ref(),
+                self.trim_start,
+                self.trim_end,
+                self.duration,
+                &dimen,
+            );
+            self.command_preview_full = cmd.full;
+            self.command_preview_masked = cmd.masked;
+        }
+    }
+}
+
+fn get_resize_handle(x: f32, y: f32, selection: &CropSelection) -> Option<ResizeHandle> {
+    const HANDLE_SIZE: f32 = 10.0;
+
+    let left = selection.x;
+    let right = selection.x + selection.width;
+    let top = selection.y;
+    let bottom = selection.y + selection.height;
+
+    // Check corner handles
+    if (x - left).abs() < HANDLE_SIZE && (y - top).abs() < HANDLE_SIZE {
+        return Some(ResizeHandle::TopLeft);
+    }
+    if (x - right).abs() < HANDLE_SIZE && (y - top).abs() < HANDLE_SIZE {
+        return Some(ResizeHandle::TopRight);
+    }
+    if (x - left).abs() < HANDLE_SIZE && (y - bottom).abs() < HANDLE_SIZE {
+        return Some(ResizeHandle::BottomLeft);
+    }
+    if (x - right).abs() < HANDLE_SIZE && (y - bottom).abs() < HANDLE_SIZE {
+        return Some(ResizeHandle::BottomRight);
+    }
+
+    None
+}
+
+/// Check if a point is inside the selection rectangle
+fn point_in_selection(x: f32, y: f32, selection: &CropSelection) -> bool {
+    x >= selection.x
+        && x <= selection.x + selection.width
+        && y >= selection.y
+        && y <= selection.y + selection.height
+}
+
+/// Resize a selection based on the handle being dragged
+fn resize_selection(
+    selection: &mut CropSelection,
+    handle: ResizeHandle,
+    x: f32,
+    y: f32,
+    original: &CropSelection,
+) {
+    match handle {
+        ResizeHandle::TopLeft => {
+            selection.x = x;
+            selection.y = y;
+            selection.width = (original.x + original.width) - x;
+            selection.height = (original.y + original.height) - y;
+        }
+        ResizeHandle::TopRight => {
+            selection.y = y;
+            selection.width = x - original.x;
+            selection.height = (original.y + original.height) - y;
+        }
+        ResizeHandle::BottomLeft => {
+            selection.x = x;
+            selection.width = (original.x + original.width) - x;
+            selection.height = y - original.y;
+        }
+        ResizeHandle::BottomRight => {
+            selection.width = x - original.x;
+            selection.height = y - original.y;
+        }
+    }
+
+    // Ensure minimum size and prevent negative dimensions
+    if selection.width < 10.0 {
+        selection.width = 10.0;
+    }
+    if selection.height < 10.0 {
+        selection.height = 10.0;
+    }
+}
