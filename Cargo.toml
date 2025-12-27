@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = { version = "0.15.0-dev", features = ["tokio", "advanced", "image", "canvas", "svg"] }
+iced = { git = "https://github.com/iced-rs/iced.git", rev = "fd25ff1d3607872cb3163fa5e2d58fe82ab642fb", features = ["tokio", "advanced", "image", "canvas", "svg"] }
 tokio = { version = "1.48", features = ["process", "io-util", "fs"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.9"
@@ -17,9 +17,6 @@ cpal = "0.16"
 
 [build-dependencies]
 winres = "0.1"
-
-[patch.crates-io]
-iced.git = "https://github.com/iced-rs/iced.git"
 
 [profile.release]
 strip = true
