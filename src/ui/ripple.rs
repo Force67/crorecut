@@ -9,7 +9,6 @@ use std::time::Instant;
 
 const RIPPLE_DURATION: f32 = 0.5;
 const FADE_DURATION: f32 = 0.25;
-const DEFAULT_RIPPLE_ALPHA: f32 = 0.15;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum RippleShape {
@@ -291,12 +290,12 @@ where
                 let expansion = ripple.expansion_progress();
                 let eased = 1.0 - (1.0 - expansion).powi(3);
                 let current_radius = ripple.max_radius * eased;
+                let ripple_alpha = self.ripple_color.a;
 
                 let alpha = if ripple.is_held() {
-                    DEFAULT_RIPPLE_ALPHA * (1.0 - expansion * 0.2)
+                    ripple_alpha
                 } else {
-                    let held_alpha =
-                        DEFAULT_RIPPLE_ALPHA * (1.0 - ripple.expansion_at_release * 0.2);
+                    let held_alpha = ripple_alpha * (1.0 - ripple.expansion_at_release * 0.2);
                     let fade = ripple.fade_progress();
                     held_alpha * (1.0 - fade)
                 };

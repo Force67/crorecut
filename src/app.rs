@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use iced::{Element, Subscription, Task};
+use iced::{Element, Subscription, Task, theme};
 
 use crate::ui::{about, editor, grid, settings};
 
@@ -143,6 +143,13 @@ impl Crorecut {
             Screen::Editor(state) => state.view().map(Message::Editor),
             Screen::Settings(state) => state.view().map(Message::Settings),
             Screen::About(state) => state.view().map(Message::About),
+        }
+    }
+
+    pub fn style(&self, _theme: &iced::Theme) -> iced::theme::Style {
+        theme::Style {
+            background_color: crate::ui::color::CRORECUT_BG,
+            text_color: crate::ui::color::CRORECUT_TEXT,
         }
     }
 

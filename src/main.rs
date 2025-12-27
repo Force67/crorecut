@@ -23,6 +23,7 @@ fn main() -> iced::Result {
 
     iced::application(Crorecut::new, Crorecut::update, Crorecut::view)
         .title(Crorecut::title)
+        .style(Crorecut::style)
         .subscription(Crorecut::subscription)
         .settings(iced::Settings {
             vsync: false,

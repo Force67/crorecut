@@ -9,6 +9,7 @@ use super::Message;
 use super::editor::{Editor, RenderStatus};
 use super::range_slider::range_slider;
 use super::selection_canvas::{CropSelection, SelectionCanvas};
+use crate::ui::crorecut_button;
 use crate::utils::format_timestamp;
 
 impl Editor {
@@ -251,7 +252,16 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
         )
         .on_enter(Message::CommandPreviewHovered(true))
         .on_exit(Message::CommandPreviewHovered(false)),
-        render_status_row(&state.render_status, &state.target_size_mb)
+        row![
+            crorecut_button(
+                Some(crate::icons::FFMPEG_SVG),
+                "Render and Compress…",
+                Some(Message::RunCommand),
+            ),
+            render_status_row(&state.render_status, &state.target_size_mb),
+        ]
+        .align_y(Alignment::Center)
+        .spacing(12)
     ]
     .spacing(8)
     .padding(20)
