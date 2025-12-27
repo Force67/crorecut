@@ -43,17 +43,26 @@ cargo clippy
 
 ```
 src/
-    app.rs           # App struct, Message enum, update dispatcher
+    app.rs           # App struct, Screen enum, nested Message enum
     main.rs          # Entry point
     icons.rs         # SVG icon constants
     audio/           # Audio playback via cpal, A/V sync clock
     config/          # Settings persistence (TOML)
-    handlers/        # Message handlers
-    state/           # State types
-    ui/              # View components
     utils/           # Formatting helpers
     video/           # FFmpeg operations, metadata, frame streaming
+    ui/
+        mod.rs       # Module declarations and re-exports
+        grid/        # Grid screen (video browser)
+        editor/      # Editor screen (video editing)
+        settings/    # Settings screen
+        about/       # About screen
 ```
+
+Each screen module (e.g., `ui/grid/`) follows this structure:
+- `mod.rs` - Module declarations and public re-exports
+- `grid.rs` (the screen name) - `Grid` state struct and `Message` enum
+- `view.rs` - `impl Grid { fn view() }` implementation
+- Additional files for screen-specific types (e.g., `video_item.rs`)
 
 ## iced Documentation & Source Code Lookup
 
@@ -97,32 +106,11 @@ The API returns JSON with file/directory metadata (name, type, size). Use it to 
 
 ### iced Application Structure
 
-This project uses iced's Elm-inspired architecture:
-
-- **State struct** (`App`): Holds application state
-- **Message enum**: Defines all events that can update state
-- **update()**: Pure function that handles messages and returns `Task<Message>` for async operations
-- **view()**: Pure function that renders UI based on current state, returns `Element<'_, Message>`
-- **Entry point**: Uses `iced::application(boot, update, view).run()` builder pattern
-
-The codebase follows a clean separation of concerns:
-
-**`src/app.rs`** - Core application scaffolding
-- Defines the `App` struct and `Message` enum
-- Contains the `update()` method that **delegates** to handler methods
-- Minimal business logic - acts as a dispatcher
-- Re-exports state types for convenience
-
-**`src/state/`** - Application state modules
-- Each state module contains related types and default implementations
-
-**`src/handlers/`** - Message handling logic
-- Handler methods are implemented as `impl App { pub(crate) fn handle_*(...) -> Task<Message> }`
-- Create new handler files when adding a distinct feature area (not just for every new handler)
+This project uses iced's Elm-inspired architecture with `update()`, `view()`, and `Task<Message>` for async operations. Entry point uses `iced::application(boot, update, view).run()`.
 
 ### Multi-Screen Architecture
 
-The application uses a `Screen` enum to manage different views. The `view()` method routes to screen-specific view functions based on `screen`.
+Each screen is a self-contained module under `src/ui/` with its own state, message enum, and update/view methods. The app routes messages to screens using nested enums and `.map()`.
 
 ### FFmpeg Integration Pattern
 
@@ -140,6 +128,7 @@ FFmpeg operations are executed via tokio subprocess (`tokio::process::Command`):
 
 **Common FFmpeg operations:**
 - **Crop**: `-vf crop=w:h:x:y`
+- **Resize**: `-vf scale=w:h`
 - **Cut**: `-ss start_time -to end_time`
 - **Volume**: `-af volume=<factor>`
 - **Mute**: `-an` (remove audio stream)
@@ -150,18 +139,8 @@ Audio is decoded via FFmpeg subprocess (raw PCM output) and played through `cpal
 
 ### UI Component Organization
 
-- **Extract complex UI components** to separate files in `src/ui/` (e.g., `selection_canvas.rs`)
 - **Use iced's canvas** for custom 2D graphics and overlays (requires `canvas` feature)
 - **Prefer `mouse_area`** for interactive regions that need custom cursor or event handling
-
-### Settings Management Pattern
-
-(This is not yet implemented!)
-
-Settings should:
-- Persist between sessions using TOML format with `serde`
-- Store config file using `dirs` crate for cross-platform paths
-- Include: FFmpeg binary path, default working directory, etc.
 
 ## Code Organization Guidelines
 
