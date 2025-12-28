@@ -10,16 +10,16 @@ const TRACK_HEIGHT: f32 = 6.0;
 const PLAYHEAD_WIDTH: f32 = 3.0;
 
 /// A dual-handle range slider for trim selection with playhead scrubbing
-pub struct RangeSlider {
-    pub min: f64,
-    pub max: f64,
-    pub start_value: f64,
-    pub end_value: f64,
-    pub playhead: f64,
+struct RangeSlider {
+    min: f64,
+    max: f64,
+    start_value: f64,
+    end_value: f64,
+    playhead: f64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct RangeSliderState {
+struct RangeSliderState {
     is_dragging_start: bool,
     is_dragging_end: bool,
     is_scrubbing: bool,

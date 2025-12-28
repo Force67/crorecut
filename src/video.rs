@@ -1,9 +1,9 @@
-pub mod command_builder;
-pub mod dir_scanner;
+mod command_builder;
+mod dir_scanner;
 pub mod error;
-pub mod ffmpeg;
+mod ffmpeg;
 pub mod frame_streaming;
-pub mod metadata;
+mod metadata;
 
 pub use command_builder::{
     CompressionParams, VideoDimensions, build_compression_command, build_ffmpeg_command,

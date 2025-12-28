@@ -1,11 +1,17 @@
+use iced::Subscription;
+use iced::Task;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use iced::Subscription;
-use iced::Task;
+mod range_slider;
+mod selection_canvas;
+mod view;
 
-use super::selection_canvas::CropSelection;
+use range_slider::range_slider;
+use selection_canvas::SelectionCanvas;
+
 use crate::audio::AudioClock;
+use crate::utils::CropSelection;
 use crate::utils::ImageTransform;
 use crate::video::{
     CompressionParams, VideoDimensions, VideoStreamInfo, build_compression_command,
@@ -13,7 +19,7 @@ use crate::video::{
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
-pub enum RenderStatus {
+enum RenderStatus {
     #[default]
     Idle,
     Rendering,
@@ -22,7 +28,7 @@ pub enum RenderStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ResizeHandle {
+enum ResizeHandle {
     TopLeft,
     TopRight,
     BottomLeft,
@@ -30,7 +36,7 @@ pub enum ResizeHandle {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SelectionState {
+enum SelectionState {
     Idle,
     Creating {
         start_x: f32,
@@ -48,50 +54,50 @@ pub enum SelectionState {
 
 #[derive(Debug, Clone)]
 pub struct Editor {
-    pub video_path: PathBuf,
-    pub duration: f64,
-    pub video_width: u32,
-    pub video_height: u32,
-    pub video_fps: f64,
-    pub preview_width: f32,
-    pub preview_height: f32,
-    pub video_file_size_mb: f64,
+    video_path: PathBuf,
+    duration: f64,
+    video_width: u32,
+    video_height: u32,
+    video_fps: f64,
+    preview_width: f32,
+    preview_height: f32,
+    video_file_size_mb: f64,
 
     // Frame display
-    pub frame_handle: Option<iced::advanced::image::Handle>,
-    pub timestamp: f64,
+    frame_handle: Option<iced::advanced::image::Handle>,
+    timestamp: f64,
 
     // Extraction state
-    pub is_extracting: bool,
-    pub last_extraction_request_id: u64,
-    pub pending_timestamp: Option<f64>,
+    is_extracting: bool,
+    last_extraction_request_id: u64,
+    pending_timestamp: Option<f64>,
 
     // Crop selection (in preview image space, not canvas space)
-    pub crop_selection: Option<CropSelection>,
-    pub selection_state: SelectionState,
-    pub mouse_position: (f32, f32),
-    pub canvas_bounds: (f32, f32),
+    crop_selection: Option<CropSelection>,
+    selection_state: SelectionState,
+    mouse_position: (f32, f32),
+    canvas_bounds: (f32, f32),
 
     // Trim
-    pub trim_start: f64,
-    pub trim_end: f64,
+    trim_start: f64,
+    trim_end: f64,
 
     // Command
-    pub render_status: RenderStatus,
-    pub is_command_hovered: bool,
-    pub target_size_mb: String,
-    pub command_preview_full: String,
-    pub command_preview_masked: String,
+    render_status: RenderStatus,
+    is_command_hovered: bool,
+    target_size_mb: String,
+    command_preview_full: String,
+    command_preview_masked: String,
 
     // Streaming
-    pub is_streaming: bool,
-    pub seek_generation: u64,
+    is_streaming: bool,
+    seek_generation: u64,
 
     // Audio
-    pub audio_position: f64,
-    pub has_audio_stream: bool,
-    pub audio_bitrate_bps: Option<u64>,
-    pub audio_clock: Arc<AudioClock>,
+    audio_position: f64,
+    has_audio_stream: bool,
+    audio_bitrate_bps: Option<u64>,
+    audio_clock: Arc<AudioClock>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,7 +200,7 @@ impl Editor {
         }
     }
 
-    pub fn get_image_transform(&self) -> ImageTransform {
+    fn get_image_transform(&self) -> ImageTransform {
         ImageTransform::from_contain(
             self.canvas_bounds.0,
             self.canvas_bounds.1,

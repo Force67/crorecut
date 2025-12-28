@@ -4,18 +4,20 @@ use iced::Task;
 use iced::advanced::image;
 use iced::widget::scrollable;
 
+use crate::ui::grid::video_item::{ThumbnailState, VideoItem};
 use crate::video::VideoMetadata;
 
-use super::video_item::{ThumbnailState, VideoItem};
+mod video_item;
+mod view;
 
-pub const MAX_CONCURRENT_THUMBNAILS: usize = 3;
+const MAX_CONCURRENT_THUMBNAILS: usize = 3;
 
 pub fn grid_scrollable_id() -> iced::widget::Id {
     iced::widget::Id::new("grid_scrollable")
 }
 
 #[derive(Debug, Clone)]
-pub enum ScanStatus {
+enum ScanStatus {
     NotStarted,
     Scanning,
     Complete,
@@ -24,12 +26,12 @@ pub enum ScanStatus {
 
 #[derive(Debug, Clone)]
 pub struct Grid {
-    pub videos_directory: PathBuf,
-    pub videos: Vec<VideoItem>,
-    pub scan_status: ScanStatus,
-    pub thumbnail_generation_queue: Vec<PathBuf>,
-    pub thumbnails_in_progress: usize,
-    pub scroll_offset: scrollable::RelativeOffset,
+    videos_directory: PathBuf,
+    videos: Vec<VideoItem>,
+    scan_status: ScanStatus,
+    thumbnail_generation_queue: Vec<PathBuf>,
+    thumbnails_in_progress: usize,
+    scroll_offset: scrollable::RelativeOffset,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +58,10 @@ impl Grid {
             thumbnails_in_progress: 0,
             scroll_offset: scrollable::RelativeOffset::default(),
         }
+    }
+
+    pub fn scroll_offset(&self) -> scrollable::RelativeOffset {
+        self.scroll_offset
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {

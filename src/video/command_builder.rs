@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use crate::ui::editor::CropSelection;
 use crate::video::error::CompressionError;
 
 /// Video dimensions (original and preview)
@@ -23,7 +22,7 @@ pub struct FfmpegCommand {
     pub output_path: PathBuf,
 }
 
-use crate::utils::format_timestamp_precise;
+use crate::utils::{CropSelection, format_timestamp_precise};
 
 fn is_trimming(trim_start: f64, trim_end: f64, duration: f64) -> bool {
     trim_start > 0.01 || (duration > 0.0 && trim_end < duration - 0.01)

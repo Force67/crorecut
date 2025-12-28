@@ -6,7 +6,6 @@
 
 mod app;
 mod audio;
-mod config;
 mod icons;
 mod ui;
 mod utils;

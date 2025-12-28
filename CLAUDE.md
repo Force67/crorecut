@@ -46,23 +46,21 @@ src/
     app.rs           # App struct, Screen enum, nested Message enum
     main.rs          # Entry point
     icons.rs         # SVG icon constants
+    utils.rs         # Formatting helpers
+    audio.rs         # Re-exports from audio/
     audio/           # Audio playback via cpal, A/V sync clock
-    config/          # Settings persistence (TOML)
-    utils/           # Formatting helpers
+    video.rs         # Re-exports from video/
     video/           # FFmpeg operations, metadata, frame streaming
+    ui.rs            # Re-exports from ui/
     ui/
-        mod.rs       # Module declarations and re-exports
-        grid/        # Grid screen (video browser)
-        editor/      # Editor screen (video editing)
-        settings/    # Settings screen
-        about/       # About screen
+        color.rs     # Color constants
+        grid.rs      # Grid screen state and messages
+        grid/        # Grid screen components (view, video_item)
+        editor.rs    # Editor screen state and messages
+        editor/      # Editor screen components (view, canvas, etc.)
 ```
 
-Each screen module (e.g., `ui/grid/`) follows this structure:
-- `mod.rs` - Module declarations and public re-exports
-- `grid.rs` (the screen name) - `Grid` state struct and `Message` enum
-- `view.rs` - `impl Grid { fn view() }` implementation
-- Additional files for screen-specific types (e.g., `video_item.rs`)
+Modules follow the modern recommended Rust pattern: `module.rs` + `module/` instead of `module/mod.rs`.
 
 ## iced Documentation & Source Code Lookup
 
@@ -143,15 +141,6 @@ Audio is decoded via FFmpeg subprocess (raw PCM output) and played through `cpal
 - **Prefer `mouse_area`** for interactive regions that need custom cursor or event handling
 
 ## Code Organization Guidelines
-
-### Module Structure
-
-**`mod.rs` files should only contain:**
-- Module declarations (`mod foo;`)
-- Re-exports (`pub use foo::Bar;`)
-- Module-level documentation
-
-**Keep actual implementation in named files** (e.g., `selection_canvas.rs`, `ffmpeg.rs`), not in `mod.rs`.
 
 ### Error Handling
 

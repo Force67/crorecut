@@ -5,12 +5,9 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Font, Length};
 
-use super::Message;
-use super::editor::{Editor, RenderStatus};
-use super::range_slider::range_slider;
-use super::selection_canvas::{CropSelection, SelectionCanvas};
+use super::{Editor, Message, RenderStatus, SelectionCanvas, range_slider};
 use crate::ui::crorecut_button;
-use crate::utils::format_timestamp;
+use crate::utils::{CropSelection, format_timestamp};
 
 impl Editor {
     pub fn view(&self) -> Element<'_, Message> {

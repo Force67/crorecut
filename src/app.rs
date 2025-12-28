@@ -1,15 +1,11 @@
+use crate::ui::{editor, grid};
+use iced::{Element, Subscription, Task, theme};
 use std::path::PathBuf;
 
-use iced::{Element, Subscription, Task, theme};
-
-use crate::ui::{about, editor, grid, settings};
-
 /// Screen enum - Grid state is stored separately on Crorecut since it's the home screen
-pub enum Screen {
+enum Screen {
     Grid,
     Editor(editor::Editor),
-    Settings(settings::Settings),
-    About(about::About),
 }
 
 /// Nested message enum with screen-specific variants
@@ -18,30 +14,26 @@ pub enum Message {
     // App-level navigation
     NavigateToGrid,
     NavigateToEditor(PathBuf),
-    NavigateToSettings,
-    NavigateToAbout,
 
     // Screen-specific messages (nested)
     Grid(grid::Message),
     Editor(editor::Message),
-    Settings(settings::Message),
-    About(about::Message),
+    // TODO: Settings(settings::Message),
+    // TODO: About(about::Message),
 }
 
 pub struct Crorecut {
     screen: Screen,
-    videos_directory: PathBuf,
     grid_state: grid::Grid,
 }
 
 impl Crorecut {
     pub fn new() -> (Self, Task<Message>) {
         let videos_dir = dirs::video_dir().unwrap_or_else(|| PathBuf::from("."));
-        let grid_state = grid::Grid::new(videos_dir.clone());
+        let grid_state = grid::Grid::new(videos_dir);
 
         let app = Self {
             screen: Screen::Grid,
-            videos_directory: videos_dir,
             grid_state,
         };
 
@@ -63,7 +55,7 @@ impl Crorecut {
                 if restore_scroll {
                     iced::widget::operation::snap_to(
                         grid::grid_scrollable_id(),
-                        self.grid_state.scroll_offset,
+                        self.grid_state.scroll_offset(),
                     )
                 } else {
                     Task::none()
@@ -87,16 +79,6 @@ impl Crorecut {
                 ])
             }
 
-            Message::NavigateToSettings => {
-                self.screen = Screen::Settings(settings::Settings::new());
-                Task::none()
-            }
-
-            Message::NavigateToAbout => {
-                self.screen = Screen::About(about::About::new());
-                Task::none()
-            }
-
             Message::Grid(msg) => {
                 // Special case: VideoSelected triggers navigation to editor
                 if let grid::Message::VideoSelected(ref path) = msg {
@@ -118,22 +100,6 @@ impl Crorecut {
                     Task::none()
                 }
             }
-
-            Message::Settings(msg) => {
-                if let Screen::Settings(ref mut state) = self.screen {
-                    state.update(msg).map(Message::Settings)
-                } else {
-                    Task::none()
-                }
-            }
-
-            Message::About(msg) => {
-                if let Screen::About(ref mut state) = self.screen {
-                    state.update(msg).map(Message::About)
-                } else {
-                    Task::none()
-                }
-            }
         }
     }
 
@@ -141,8 +107,6 @@ impl Crorecut {
         match &self.screen {
             Screen::Grid => self.grid_state.view().map(Message::Grid),
             Screen::Editor(state) => state.view().map(Message::Editor),
-            Screen::Settings(state) => state.view().map(Message::Settings),
-            Screen::About(state) => state.view().map(Message::About),
         }
     }
 

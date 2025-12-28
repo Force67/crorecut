@@ -1,9 +1,8 @@
 use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
 use iced::{Alignment, Border, Element, Length};
 
-use super::Message;
-use super::grid::{Grid, ScanStatus, grid_scrollable_id};
-use super::video_item::{ThumbnailState, VideoItem};
+use super::{Grid, Message, ScanStatus, grid_scrollable_id};
+use super::{ThumbnailState, VideoItem};
 use crate::ui::ripple;
 use crate::utils::format_duration_short;
 

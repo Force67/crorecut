@@ -78,7 +78,7 @@ Refer to `CLAUDE.md` for detailed project information. Key points:
 - **Architecture**: iced Elm-style (App state, Message enum, view renders UI, etc.)
 - **Async**: Handlers return `Task<Message>` - never block the UI thread
 - **FFmpeg**: Always via async subprocess, with proper error handling
-- **Module Organization**: `mod.rs` for declarations/re-exports only; implementation in named files
+- **Module Organization**: Modern Rust pattern (`module.rs` + `module/` instead of `module/mod.rs`)
 - **Primary Platform**: Windows (but keep code reasonably cross-platform)
 
 ## Your Review Process

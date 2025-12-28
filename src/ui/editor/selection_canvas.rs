@@ -2,15 +2,7 @@ use iced::widget::canvas::{Frame, Path, Stroke};
 use iced::{Event, Rectangle, mouse};
 
 use super::Message;
-use crate::utils::ImageTransform;
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CropSelection {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
+use crate::utils::{CropSelection, ImageTransform};
 
 /// Canvas for rendering crop selection overlay
 /// Note: selection is in image space (preview frame coordinates), not canvas space
@@ -24,7 +16,7 @@ pub struct SelectionCanvas {
 /// State that holds the canvas bounds (updated during draw)
 #[derive(Debug, Default, Clone)]
 pub struct CanvasState {
-    pub bounds: (f32, f32),
+    bounds: (f32, f32),
 }
 
 impl iced::widget::canvas::Program<Message> for SelectionCanvas {
