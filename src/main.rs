@@ -13,13 +13,14 @@ mod utils;
 mod video;
 
 use app::Crorecut;
+use iced::window;
+use image::ImageFormat;
 
 fn main() -> iced::Result {
     env_logger::init();
 
-    let icon =
-        iced::window::icon::from_file_data(icons::WINDOW_ICON, Some(image::ImageFormat::Ico))
-            .expect("Failed to load window icon");
+    let icon = window::icon::from_file_data(icons::WINDOW_ICON, Some(ImageFormat::Png))
+        .expect("Failed to load window icon");
 
     iced::application(Crorecut::new, Crorecut::update, Crorecut::view)
         .title(Crorecut::title)
@@ -29,7 +30,7 @@ fn main() -> iced::Result {
             vsync: false,
             ..Default::default()
         })
-        .window(iced::window::Settings {
+        .window(window::Settings {
             size: iced::Size::new(960.0, 600.0),
             min_size: Some(iced::Size::new(800.0, 540.0)),
             icon: Some(icon),
