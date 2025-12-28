@@ -14,7 +14,7 @@ use crate::audio::AudioClock;
 use crate::utils::CropSelection;
 use crate::utils::ImageTransform;
 use crate::video::{
-    CompressionParams, VideoDimensions, VideoStreamInfo, build_compression_command,
+    CompressionParams, Resolution, VideoDimensions, VideoStreamInfo, build_compression_command,
     build_ffmpeg_command,
 };
 
@@ -85,6 +85,7 @@ pub struct Editor {
     // Command
     render_status: RenderStatus,
     is_command_hovered: bool,
+    target_resolution: Option<Resolution>,
     target_size_mb: String,
     command_preview_full: String,
     command_preview_masked: String,
@@ -135,6 +136,7 @@ pub enum Message {
     DeleteFile(PathBuf),
     OpenParentDir(PathBuf),
     CommandPreviewHovered(bool),
+    ResolutionChanged(Option<Resolution>),
     TargetSizeChanged(String),
 
     // Streaming
@@ -186,6 +188,7 @@ impl Editor {
 
             render_status: RenderStatus::Idle,
             is_command_hovered: false,
+            target_resolution: None,
             target_size_mb: String::new(),
             command_preview_full: String::new(),
             command_preview_masked: String::new(),
@@ -370,6 +373,12 @@ impl Editor {
 
             Message::CommandPreviewHovered(hovered) => {
                 self.is_command_hovered = hovered;
+                Task::none()
+            }
+
+            Message::ResolutionChanged(resolution) => {
+                self.target_resolution = resolution;
+                self.regenerate_command_preview();
                 Task::none()
             }
 
@@ -639,6 +648,7 @@ impl Editor {
 
         let video_path = self.video_path.clone();
         let crop_selection = self.crop_selection;
+        let target_resolution = self.target_resolution;
         let trim_start = self.trim_start;
         let trim_end = self.trim_end;
         let duration = self.duration;
@@ -681,6 +691,7 @@ impl Editor {
                         &video_path,
                         &params,
                         crop_selection.as_ref(),
+                        target_resolution,
                         trim_start,
                         trim_end,
                         &dimen,
@@ -716,6 +727,7 @@ impl Editor {
             let ffmpeg_cmd = build_ffmpeg_command(
                 &video_path,
                 crop_selection.as_ref(),
+                target_resolution,
                 trim_start,
                 trim_end,
                 duration,
@@ -762,6 +774,7 @@ impl Editor {
                 &self.video_path,
                 &params,
                 self.crop_selection.as_ref(),
+                self.target_resolution,
                 self.trim_start,
                 self.trim_end,
                 &dimen,
@@ -780,6 +793,7 @@ impl Editor {
             let cmd = build_ffmpeg_command(
                 &self.video_path,
                 self.crop_selection.as_ref(),
+                self.target_resolution,
                 self.trim_start,
                 self.trim_end,
                 self.duration,

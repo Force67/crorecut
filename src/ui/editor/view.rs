@@ -1,13 +1,56 @@
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, canvas, column, container, image, mouse_area, rich_text, row, space, span, stack, svg,
-    text, text_input,
+    button, canvas, column, container, image, mouse_area, pick_list, rich_text, row, space, span,
+    stack, svg, text, text_input,
 };
 use iced::{Alignment, Element, Font, Length};
 
-use super::{Editor, Message, RenderStatus, SelectionCanvas, range_slider};
+use super::{Editor, Message, RenderStatus, Resolution, SelectionCanvas, range_slider};
 use crate::ui::crorecut_button;
 use crate::utils::{CropSelection, format_timestamp};
+
+/// Wrapper for resolution picker that includes "Original" option
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolutionOption {
+    Original,
+    Scale(Resolution),
+}
+
+impl ResolutionOption {
+    fn options_for(source_height: u32) -> Vec<ResolutionOption> {
+        let mut options = vec![ResolutionOption::Original];
+        options.extend(
+            Resolution::available_for(source_height)
+                .into_iter()
+                .rev()
+                .map(ResolutionOption::Scale),
+        );
+        options
+    }
+
+    fn from_resolution(res: Option<Resolution>) -> Self {
+        match res {
+            Some(r) => ResolutionOption::Scale(r),
+            None => ResolutionOption::Original,
+        }
+    }
+
+    fn to_resolution(self) -> Option<Resolution> {
+        match self {
+            ResolutionOption::Original => None,
+            ResolutionOption::Scale(r) => Some(r),
+        }
+    }
+}
+
+impl std::fmt::Display for ResolutionOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolutionOption::Original => write!(f, "Original"),
+            ResolutionOption::Scale(r) => write!(f, "{}", r),
+        }
+    }
+}
 
 impl Editor {
     pub fn view(&self) -> Element<'_, Message> {
@@ -268,6 +311,10 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
 
 fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
     let gray = iced::color!(0x999999);
+
+    let resolution_options = ResolutionOption::options_for(state.video_height);
+    let selected = ResolutionOption::from_resolution(state.target_resolution);
+
     row![
         text("FFmpeg Command (").size(12).color(gray),
         link_button("Copy", Message::CopyCommand),
@@ -275,13 +322,23 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
         link_button("Run", Message::RunCommand),
         text(")").size(12).color(gray),
         space::horizontal(),
-        text("Compress to: ").size(12).color(gray),
+        text("Resolution:").size(12).color(gray),
+        space::horizontal().width(4),
+        pick_list(resolution_options, Some(selected), |opt| {
+            Message::ResolutionChanged(opt.to_resolution())
+        })
+        .text_size(12)
+        .padding(4),
+        space::horizontal().width(8),
+        text("Compress to:").size(12).color(gray),
+        space::horizontal().width(4),
         text_input("", &state.target_size_mb)
             .on_input(Message::TargetSizeChanged)
             .width(Length::Fixed(50.0))
             .padding(4)
             .size(12),
-        text(format!(" MB (source: {:.1} MB)", state.video_file_size_mb))
+        space::horizontal().width(4),
+        text(format!("MB (source: {:.1} MB)", state.video_file_size_mb))
             .size(12)
             .color(gray),
     ]

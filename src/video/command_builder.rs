@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use super::Resolution;
 use crate::video::error::CompressionError;
 
 /// Video dimensions (original and preview)
@@ -61,6 +62,7 @@ fn build_trim_args(trim_start: f64, trim_end: f64, duration: f64) -> TrimArgs {
 pub fn build_ffmpeg_command(
     input_path: &Path,
     crop: Option<&CropSelection>,
+    resolution: Option<Resolution>,
     trim_start: f64,
     trim_end: f64,
     duration: f64,
@@ -88,8 +90,8 @@ pub fn build_ffmpeg_command(
     masked_args.extend(trim.after_input.iter().cloned());
     exec_args.extend(trim.after_input);
 
-    // Video filters (crop)
-    if let Some(filter_str) = crop.and_then(|c| build_crop_filter(c, dimen)) {
+    // Video filters
+    if let Some(filter_str) = build_video_filter(crop, resolution, dimen) {
         display_args.push("-vf".to_string());
         display_args.push(format!("\"{}\"", filter_str));
         masked_args.push("-vf".to_string());
@@ -223,6 +225,28 @@ fn build_crop_filter(crop: &CropSelection, dimen: &VideoDimensions) -> Option<St
     }
 }
 
+/// -2 for width to ensure divisibility by 2
+fn build_scale_filter(resolution: Resolution) -> String {
+    format!("scale=-2:{}", resolution.height())
+}
+
+/// Combine crop and scale filters into a single filter: crop first, then scale
+fn build_video_filter(
+    crop: Option<&CropSelection>,
+    resolution: Option<Resolution>,
+    dimen: &VideoDimensions,
+) -> Option<String> {
+    let filters: Vec<_> = [
+        crop.and_then(|c| build_crop_filter(c, dimen)),
+        resolution.map(build_scale_filter),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    (!filters.is_empty()).then(|| filters.join(","))
+}
+
 /// Build a two-pass compression command for a target file size.
 /// Supports optional crop and trim operations integrated into the compression.
 ///
@@ -232,6 +256,7 @@ pub fn build_compression_command(
     input_path: &Path,
     params: &CompressionParams,
     crop: Option<&CropSelection>,
+    resolution: Option<Resolution>,
     trim_start: f64,
     trim_end: f64,
     dimen: &VideoDimensions,
@@ -277,7 +302,7 @@ pub fn build_compression_command(
     let video_bitrate_str = format!("{}k", video_bitrate_kbps as u64);
 
     let trim = build_trim_args(trim_start, trim_end, params.duration_sec);
-    let crop_filter = crop.and_then(|c| build_crop_filter(c, dimen));
+    let video_filter = build_video_filter(crop, resolution, dimen);
 
     #[cfg(windows)]
     let null_output = "NUL";
@@ -290,7 +315,7 @@ pub fn build_compression_command(
     pass1_args.extend(["-i".to_string(), input_str.clone()]);
     pass1_args.extend(trim.after_input.iter().cloned());
 
-    if let Some(ref filter) = crop_filter {
+    if let Some(ref filter) = video_filter {
         pass1_args.extend(["-vf".to_string(), filter.clone()]);
     }
 
@@ -315,7 +340,7 @@ pub fn build_compression_command(
     pass2.input(&input_str);
     pass2.extend(trim.after_input);
 
-    if let Some(ref filter) = crop_filter {
+    if let Some(ref filter) = video_filter {
         pass2.filter(filter);
     }
 

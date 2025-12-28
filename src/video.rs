@@ -4,6 +4,7 @@ pub mod error;
 mod ffmpeg;
 pub mod frame_streaming;
 mod metadata;
+mod resolution;
 
 pub use command_builder::{
     CompressionParams, VideoDimensions, build_compression_command, build_ffmpeg_command,
@@ -14,3 +15,4 @@ pub use ffmpeg::{
     run_two_pass_compression,
 };
 pub use metadata::VideoMetadata;
+pub use resolution::Resolution;
