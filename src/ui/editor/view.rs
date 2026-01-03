@@ -240,17 +240,9 @@ fn timeline(
     .into()
 }
 
-fn render_status_row<'a>(status: &'a RenderStatus, target_size_mb: &str) -> Element<'a, Message> {
+fn render_status_row<'a>(status: &'a RenderStatus) -> Element<'a, Message> {
     match status {
-        RenderStatus::Idle => row![].into(),
-        RenderStatus::Rendering => {
-            let msg = if target_size_mb.is_empty() {
-                "Rendering..."
-            } else {
-                "Rendering and compressing..."
-            };
-            row![text(msg).size(12).color(iced::Color::WHITE)].into()
-        }
+        RenderStatus::Idle | RenderStatus::Rendering => row![].into(),
         RenderStatus::Completed(output_path) => {
             let green = iced::Color::from_rgb(0.4, 0.9, 0.4);
             row![
@@ -274,6 +266,14 @@ fn render_status_row<'a>(status: &'a RenderStatus, target_size_mb: &str) -> Elem
 }
 
 fn command_section(state: &Editor) -> Element<'_, Message> {
+    let will_compress = !state.target_size_mb.is_empty();
+    let render_label = match (&state.render_status, will_compress) {
+        (RenderStatus::Rendering, true) => "Rendering and Compressing…",
+        (RenderStatus::Rendering, false) => "Rendering…",
+        (_, true) => "Render and Compress…",
+        (_, false) => "Render…",
+    };
+
     column![
         command_header(state),
         mouse_area(
@@ -295,10 +295,18 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
         row![
             crorecut_button(
                 Some(crate::icons::FFMPEG_SVG),
-                "Render and Compress…",
+                render_label.into(),
+                state.render_progress.map(|p| {
+                    let mins = (p.out_time / 60.0) as u32;
+                    let secs = (p.out_time % 60.0) as u32;
+                    format!(
+                        "frame {}, rendered {:02}:{:02} @ {:.2}x",
+                        p.frame, mins, secs, p.speed
+                    )
+                }),
                 Some(Message::RunCommand),
             ),
-            render_status_row(&state.render_status, &state.target_size_mb),
+            render_status_row(&state.render_status),
         ]
         .align_y(Alignment::Center)
         .spacing(12)

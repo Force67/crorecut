@@ -2,7 +2,7 @@
 
 use iced::Length::{Fill, Shrink};
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{button, container, row, stack, svg, text};
+use iced::widget::{button, column, container, row, stack, svg, text};
 use iced::{Alignment, Color, Element, color};
 
 use super::ripple;
@@ -22,7 +22,8 @@ fn button_style(_theme: &iced::Theme, _status: button::Status) -> button::Style 
 
 pub fn crorecut_button<'a, Message>(
     icon: Option<&'static [u8]>,
-    label: &'a str,
+    label: String,
+    sublabel: Option<String>,
     on_press: Option<Message>,
 ) -> Element<'a, Message>
 where
@@ -35,17 +36,26 @@ where
             color: Some(color!(0x525259)),
         });
 
+    let label_content: Element<'_, Message> = match sublabel {
+        Some(sub) => column![
+            text(label).color(color!(0xB3B3B3)).size(14),
+            text(sub).color(color!(0x818181)).size(12)
+        ]
+        .into(),
+        None => text(label).color(color!(0xB3B3B3)).size(14).into(),
+    };
+
     let content: Element<'_, Message> = match icon {
         Some(icon_data) => {
             let icon_svg = svg(svg::Handle::from_memory(icon_data))
                 .width(24)
                 .height(24);
-            row![icon_svg, text(label).color(color!(0xB3B3B3)).size(14)]
+            row![icon_svg, label_content]
                 .spacing(10)
                 .align_y(Alignment::Center)
                 .into()
         }
-        None => text(label).color(color!(0xB3B3B3)).size(14).into(),
+        None => label_content,
     };
 
     let corner_overlay = container(corner_dots)
@@ -57,11 +67,9 @@ where
     let btn = {
         let mut b = button(stack![
             container(content)
-                .width(Shrink)
-                .height(Shrink)
                 .center_x(Shrink)
                 .center_y(Shrink)
-                .padding([8, 14]),
+                .padding([8, 22]),
             corner_overlay,
         ])
         .style(button_style)

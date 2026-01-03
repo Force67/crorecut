@@ -11,8 +11,8 @@ pub use command_builder::{
 };
 pub use dir_scanner::scan_videos_directory;
 pub use ffmpeg::{
-    VideoStreamInfo, extract_frame, get_audio_bitrate, get_video_stream_info, run_ffmpeg_command,
-    run_two_pass_compression,
+    RenderEvent, RenderProgress, VideoStreamInfo, extract_frame, get_video_stream_info,
+    render_two_pass_stream, run_ffmpeg_command,
 };
 pub use metadata::VideoMetadata;
 pub use resolution::Resolution;

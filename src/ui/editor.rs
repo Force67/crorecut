@@ -14,8 +14,8 @@ use crate::audio::AudioClock;
 use crate::utils::CropSelection;
 use crate::utils::ImageTransform;
 use crate::video::{
-    CompressionParams, Resolution, VideoDimensions, VideoStreamInfo, build_compression_command,
-    build_ffmpeg_command,
+    CompressionParams, RenderEvent, RenderProgress, Resolution, VideoDimensions, VideoStreamInfo,
+    build_compression_command, build_ffmpeg_command, render_two_pass_stream, run_ffmpeg_command,
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -84,8 +84,9 @@ pub struct Editor {
     last_extraction_request_id: u64,
     pending_timestamp: Option<f64>,
 
-    // Command preview
+    // Command preview and rendering
     render_status: RenderStatus,
+    render_progress: Option<RenderProgress>,
     is_command_hovered: bool,
     command_preview_full: String,
     command_preview_masked: String,
@@ -129,6 +130,7 @@ pub enum Message {
     // Command
     CopyCommand,
     RunCommand,
+    RenderProgressUpdate(RenderProgress),
     CommandCompleted(Result<PathBuf, String>),
     OpenFile(PathBuf),
     DeleteFile(PathBuf),
@@ -187,8 +189,9 @@ impl Editor {
             is_extracting: false,
             last_extraction_request_id: 0,
             pending_timestamp: None,
-            // Command preview
+            // Command preview and rendering
             render_status: RenderStatus::Idle,
+            render_progress: None,
             is_command_hovered: false,
             command_preview_full: String::new(),
             command_preview_masked: String::new(),
@@ -312,7 +315,13 @@ impl Editor {
 
             Message::RunCommand => self.run_command(),
 
+            Message::RenderProgressUpdate(progress) => {
+                self.render_progress = Some(progress);
+                Task::none()
+            }
+
             Message::CommandCompleted(result) => {
+                self.render_progress = None;
                 match result {
                     Ok(output_path) => {
                         log::info!("Command completed successfully");
@@ -649,23 +658,20 @@ impl Editor {
     }
 
     fn run_command(&mut self) -> Task<Message> {
+        use iced::futures::StreamExt;
+
         self.render_status = RenderStatus::Rendering;
 
-        let video_path = self.video_path.clone();
-        let crop_selection = self.crop_selection;
-        let target_resolution = self.target_resolution;
-        let trim_start = self.trim_start;
-        let trim_end = self.trim_end;
-        let duration = self.duration;
-        let video_width = self.video_width;
-        let video_height = self.video_height;
-        let preview_width = self.preview_width;
-        let preview_height = self.preview_height;
-        let target_size_str = self.target_size_mb.clone();
-        let mute_audio = self.mute_audio;
+        let dimen = VideoDimensions {
+            video_width: self.video_width,
+            video_height: self.video_height,
+            preview_width: self.preview_width,
+            preview_height: self.preview_height,
+        };
 
-        // Check if compression is enabled
-        let target_size: Option<f64> = target_size_str
+        // Check if we should do compression
+        let target_size: Option<f64> = self
+            .target_size_mb
             .trim()
             .parse()
             .ok()
@@ -673,87 +679,63 @@ impl Editor {
 
         if let Some(target_size_mb) = target_size {
             // Two-pass mode with compression
-            Task::perform(
-                async move {
-                    // Get audio bitrate
-                    let audio_bitrate = crate::video::get_audio_bitrate(video_path.clone())
-                        .await
-                        .map_err(|e| e.to_string())?;
-
-                    let dimen = VideoDimensions {
-                        video_width,
-                        video_height,
-                        preview_width,
-                        preview_height,
-                    };
-
-                    let params = CompressionParams {
-                        target_size_mb,
-                        duration_sec: duration,
-                        audio_bitrate_bps: audio_bitrate,
-                    };
-
-                    let cmd = build_compression_command(
-                        &video_path,
-                        &params,
-                        crop_selection.as_ref(),
-                        target_resolution,
-                        trim_start,
-                        trim_end,
-                        &dimen,
-                        mute_audio,
-                    )
-                    .map_err(|e| e.to_string())?;
-
-                    let working_dir = video_path
-                        .parent()
-                        .map(|p| p.to_path_buf())
-                        .unwrap_or_else(|| PathBuf::from("."));
-
-                    crate::video::run_two_pass_compression(
-                        cmd.pass1_args,
-                        cmd.pass2_args,
-                        working_dir,
-                    )
-                    .await
-                    .map_err(|e| e.to_string())?;
-
-                    Ok(cmd.output_path)
-                },
-                Message::CommandCompleted,
-            )
-        } else {
-            // Single-pass mode (no compression)
-            let dimen = VideoDimensions {
-                video_width,
-                video_height,
-                preview_width,
-                preview_height,
+            let params = CompressionParams {
+                target_size_mb,
+                duration_sec: self.duration,
+                audio_bitrate_bps: self.audio_bitrate_bps,
             };
 
-            let ffmpeg_cmd = build_ffmpeg_command(
-                &video_path,
-                crop_selection.as_ref(),
-                target_resolution,
-                trim_start,
-                trim_end,
-                duration,
+            let cmd = match build_compression_command(
+                &self.video_path,
+                &params,
+                self.crop_selection.as_ref(),
+                self.target_resolution,
+                self.trim_start,
+                self.trim_end,
                 &dimen,
-                mute_audio,
+                self.mute_audio,
+            ) {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    return Task::done(Message::CommandCompleted(Err(e.to_string())));
+                }
+            };
+
+            let working_dir = self
+                .video_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("."));
+
+            let output_path = cmd.output_path.clone();
+            let stream = render_two_pass_stream(cmd.pass1_args, cmd.pass2_args, working_dir);
+
+            Task::stream(stream.map(move |event| match event {
+                RenderEvent::Progress(p) => Message::RenderProgressUpdate(p),
+                RenderEvent::Completed => Message::CommandCompleted(Ok(output_path.clone())),
+                RenderEvent::Failed(e) => Message::CommandCompleted(Err(e)),
+            }))
+        } else {
+            // Single-pass mode (no compression)
+            let ffmpeg_cmd = build_ffmpeg_command(
+                &self.video_path,
+                self.crop_selection.as_ref(),
+                self.target_resolution,
+                self.trim_start,
+                self.trim_end,
+                self.duration,
+                &dimen,
+                self.mute_audio,
             );
 
-            let args = ffmpeg_cmd.args;
-            let output_path = ffmpeg_cmd.output_path;
+            let output_path = ffmpeg_cmd.output_path.clone();
+            let stream = run_ffmpeg_command(ffmpeg_cmd.args);
 
-            Task::perform(
-                async move {
-                    crate::video::run_ffmpeg_command(&args).await?;
-                    Ok(output_path)
-                },
-                |result: Result<PathBuf, crate::video::error::FfmpegCommandError>| {
-                    Message::CommandCompleted(result.map_err(|e| e.to_string()))
-                },
-            )
+            Task::stream(stream.map(move |event| match event {
+                RenderEvent::Progress(p) => Message::RenderProgressUpdate(p),
+                RenderEvent::Completed => Message::CommandCompleted(Ok(output_path.clone())),
+                RenderEvent::Failed(e) => Message::CommandCompleted(Err(e)),
+            }))
         }
     }
 
