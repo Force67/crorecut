@@ -112,8 +112,8 @@ impl Crorecut {
 
     pub fn style(&self, _theme: &iced::Theme) -> iced::theme::Style {
         theme::Style {
-            background_color: crate::ui::color::CRORECUT_BG,
-            text_color: crate::ui::color::CRORECUT_TEXT,
+            background_color: crate::ui::color::BACKGROUND,
+            text_color: crate::ui::color::TEXT,
         }
     }
 

@@ -1,9 +1,10 @@
 use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
 use iced::{Alignment, Border, Element, Length};
+use std::path::Path;
 
 use super::{Grid, Message, ScanStatus, grid_scrollable_id};
 use super::{ThumbnailState, VideoItem};
-use crate::ui::ripple;
+use crate::ui::crorecut_button;
 use crate::utils::format_duration_short;
 
 impl Grid {
@@ -16,7 +17,7 @@ impl Grid {
                     .into()
             }
 
-            ScanStatus::Complete => videos_grid(&self.videos),
+            ScanStatus::Complete => videos_grid(&self.videos_directory, &self.videos),
 
             ScanStatus::Error(error_msg) => container(
                 column![
@@ -165,32 +166,22 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .into()
 }
 
-fn refresh_section<'a>() -> Element<'a, Message> {
-    container(ripple(
-        button(
-            text("Refresh videos")
-                .color(iced::Color::WHITE)
-                .width(Length::Fill)
-                .center(),
-        )
-        .on_press(Message::ScanVideosDirectory)
-        .width(Length::Fill)
-        .height(Length::Fixed(44.0))
-        .padding(12.0)
-        .style(|_theme, _status| button::Style {
-            background: Some(iced::color!(0x383A3F).into()),
-            ..Default::default()
-        }),
+fn refresh_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
+    container(crorecut_button(
+        Some(crate::icons::REFRESH_SVG),
+        "Refresh videos".into(),
+        Some(videos_dir.display().to_string()),
+        Some(Message::ScanVideosDirectory),
     ))
     .padding([12, 20])
-    .width(Length::Fill)
+    .center_x(Length::Fill)
     .into()
 }
 
-fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
+fn videos_grid<'a>(videos_dir: &'a Path, videos: &'a [VideoItem]) -> Element<'a, Message> {
     if videos.is_empty() {
         return column![
-            refresh_section(),
+            refresh_section(videos_dir),
             container(
                 column![
                     text("No videos found").size(20),
@@ -211,7 +202,7 @@ fn videos_grid(videos: &[VideoItem]) -> Element<'_, Message> {
         .height(grid::Sizing::AspectRatio(1.35)); // Slightly taller than 16:9 to fit text
 
     column![
-        refresh_section(),
+        refresh_section(videos_dir),
         scrollable(container(video_grid).padding(20).width(Length::Fill))
             .id(grid_scrollable_id())
             .on_scroll(Message::ScrollChanged)

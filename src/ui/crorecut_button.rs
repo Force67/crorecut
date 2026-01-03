@@ -5,11 +5,12 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, column, container, row, stack, svg, text};
 use iced::{Alignment, Color, Element, color};
 
+use super::color as app_colors;
 use super::ripple;
 
 fn button_style(_theme: &iced::Theme, _status: button::Status) -> button::Style {
     button::Style {
-        background: Some(iced::Background::Color(color!(0x232326))),
+        background: Some(iced::Background::Color(app_colors::BUTTON_BG)),
         text_color: Color::WHITE,
         border: iced::Border {
             color: color!(0x3D3D43),
@@ -38,18 +39,18 @@ where
 
     let label_content: Element<'_, Message> = match sublabel {
         Some(sub) => column![
-            text(label).color(color!(0xB3B3B3)).size(14),
-            text(sub).color(color!(0x818181)).size(12)
+            text(label).color(app_colors::TEXT).size(14),
+            text(sub).color(app_colors::TEXT_SECONDARY).size(12)
         ]
         .into(),
-        None => text(label).color(color!(0xB3B3B3)).size(14).into(),
+        None => text(label).color(app_colors::TEXT).size(14).into(),
     };
 
     let content: Element<'_, Message> = match icon {
         Some(icon_data) => {
             let icon_svg = svg(svg::Handle::from_memory(icon_data))
-                .width(24)
-                .height(24);
+                .width(28)
+                .height(28);
             row![icon_svg, label_content]
                 .spacing(10)
                 .align_y(Alignment::Center)
@@ -69,7 +70,7 @@ where
             container(content)
                 .center_x(Shrink)
                 .center_y(Shrink)
-                .padding([8, 22]),
+                .padding([8, 16]),
             corner_overlay,
         ])
         .style(button_style)
@@ -81,5 +82,5 @@ where
         b
     };
 
-    ripple(btn).ripple_color(color!(0x696977, 0.25)).into()
+    ripple(btn).ripple_color(app_colors::RIPPLE_ON_GRAY).into()
 }
