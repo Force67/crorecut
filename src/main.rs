@@ -30,8 +30,8 @@ fn main() -> iced::Result {
             ..Default::default()
         })
         .window(window::Settings {
-            size: iced::Size::new(960.0, 600.0),
-            min_size: Some(iced::Size::new(800.0, 540.0)),
+            size: iced::Size::new(960., 860.),
+            min_size: Some(iced::Size::new(800., 540.)),
             icon: Some(icon),
             ..Default::default()
         })
