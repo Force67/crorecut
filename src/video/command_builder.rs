@@ -59,6 +59,8 @@ fn build_trim_args(trim_start: f64, trim_end: f64, duration: f64) -> TrimArgs {
 ///
 /// Returns a structured command with both full and masked versions.
 /// Crop coordinates are automatically scaled from preview space to original video dimensions.
+///
+/// When no video filters are needed (no crop/resize), uses `-c copy` to avoid re-encoding.
 pub fn build_ffmpeg_command(
     input_path: &Path,
     crop: Option<&CropSelection>,
@@ -67,6 +69,7 @@ pub fn build_ffmpeg_command(
     trim_end: f64,
     duration: f64,
     dimen: &VideoDimensions,
+    mute_audio: bool,
 ) -> FfmpegCommand {
     let mut display_args = vec!["ffmpeg".to_string()];
     let mut masked_args = vec!["ffmpeg".to_string()];
@@ -91,13 +94,28 @@ pub fn build_ffmpeg_command(
     exec_args.extend(trim.after_input);
 
     // Video filters
-    if let Some(filter_str) = build_video_filter(crop, resolution, dimen) {
+    let video_filter = build_video_filter(crop, resolution, dimen);
+    if let Some(ref filter_str) = video_filter {
         display_args.push("-vf".to_string());
         display_args.push(format!("\"{}\"", filter_str));
         masked_args.push("-vf".to_string());
         masked_args.push(format!("\"{}\"", filter_str));
         exec_args.push("-vf".to_string());
-        exec_args.push(filter_str);
+        exec_args.push(filter_str.clone());
+    }
+
+    // Use stream copy when no video filters are applied (no re-encoding needed)
+    if video_filter.is_none() {
+        display_args.extend(["-c".to_string(), "copy".to_string()]);
+        masked_args.extend(["-c".to_string(), "copy".to_string()]);
+        exec_args.extend(["-c".to_string(), "copy".to_string()]);
+    }
+
+    // Audio handling: mute removes audio stream entirely
+    if mute_audio {
+        display_args.push("-an".to_string());
+        masked_args.push("-an".to_string());
+        exec_args.push("-an".to_string());
     }
 
     // Generate output filename
@@ -260,9 +278,14 @@ pub fn build_compression_command(
     trim_start: f64,
     trim_end: f64,
     dimen: &VideoDimensions,
+    mute_audio: bool,
 ) -> Result<TwoPassCommand, CompressionError> {
-    // Convert audio bitrate from bps to kbps (or 0 if no audio)
-    let audio_bitrate_kbps = params.audio_bitrate_bps.map(|b| b / 1024).unwrap_or(0) as f64;
+    // Convert audio bitrate from bps to kbps (or 0 if no audio or muted)
+    let audio_bitrate_kbps = if mute_audio {
+        0.0
+    } else {
+        params.audio_bitrate_bps.map(|b| b / 1024).unwrap_or(0) as f64
+    };
 
     // Use trimmed duration for bitrate calculation
     let effective_duration = trim_end - trim_start;
@@ -353,15 +376,15 @@ pub fn build_compression_command(
         "2".to_string(),
     ]);
 
-    if params.audio_bitrate_bps.is_some() {
+    if mute_audio || params.audio_bitrate_bps.is_none() {
+        pass2.push("-an");
+    } else {
         pass2.extend([
             "-c:a".to_string(),
             "aac".to_string(),
             "-b:a".to_string(),
             audio_bitrate_str,
         ]);
-    } else {
-        pass2.push("-an");
     }
 
     pass2.output(&output_str);

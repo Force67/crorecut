@@ -54,6 +54,7 @@ enum SelectionState {
 
 #[derive(Debug, Clone)]
 pub struct Editor {
+    // Video metadata (immutable after loading)
     video_path: PathBuf,
     duration: f64,
     video_width: u32,
@@ -62,43 +63,40 @@ pub struct Editor {
     preview_width: f32,
     preview_height: f32,
     video_file_size_mb: f64,
+    has_audio_stream: bool,
+    audio_bitrate_bps: Option<u64>,
 
-    // Frame display
+    // Crop selection UI state
+    selection_state: SelectionState,
+    mouse_position: (f32, f32),
+    canvas_bounds: (f32, f32),
+
+    // Frame and audio streaming
     frame_handle: Option<iced::advanced::image::Handle>,
     timestamp: f64,
+    is_streaming: bool,
+    seek_generation: u64,
+    audio_position: f64,
+    audio_clock: Arc<AudioClock>,
 
     // Extraction state
     is_extracting: bool,
     last_extraction_request_id: u64,
     pending_timestamp: Option<f64>,
 
-    // Crop selection (in preview image space, not canvas space)
-    crop_selection: Option<CropSelection>,
-    selection_state: SelectionState,
-    mouse_position: (f32, f32),
-    canvas_bounds: (f32, f32),
-
-    // Trim
-    trim_start: f64,
-    trim_end: f64,
-
-    // Command
+    // Command preview
     render_status: RenderStatus,
     is_command_hovered: bool,
-    target_resolution: Option<Resolution>,
-    target_size_mb: String,
     command_preview_full: String,
     command_preview_masked: String,
 
-    // Streaming
-    is_streaming: bool,
-    seek_generation: u64,
-
-    // Audio
-    audio_position: f64,
-    has_audio_stream: bool,
-    audio_bitrate_bps: Option<u64>,
-    audio_clock: Arc<AudioClock>,
+    // Editing
+    crop_selection: Option<CropSelection>,
+    trim_start: f64,
+    trim_end: f64,
+    target_resolution: Option<Resolution>,
+    target_size_mb: String,
+    mute_audio: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +136,7 @@ pub enum Message {
     CommandPreviewHovered(bool),
     ResolutionChanged(Option<Resolution>),
     TargetSizeChanged(String),
+    MuteAudioToggled(bool),
 
     // Streaming
     StartPlayback,
@@ -162,6 +161,7 @@ impl Editor {
             .unwrap_or(0.0);
 
         Self {
+            // Video metadata
             video_path,
             duration: 0.0,
             video_width: 0,
@@ -170,36 +170,35 @@ impl Editor {
             preview_width: 0.0,
             preview_height: 360.0,
             video_file_size_mb: file_size_mb,
-
-            frame_handle: None,
-            timestamp: 0.0,
-
-            is_extracting: false,
-            last_extraction_request_id: 0,
-            pending_timestamp: None,
-
-            crop_selection: None,
+            has_audio_stream: false,
+            audio_bitrate_bps: None,
+            // Crop selection UI state
             selection_state: SelectionState::Idle,
             mouse_position: (0.0, 0.0),
             canvas_bounds: (1.0, 1.0),
-
-            trim_start: 0.0,
-            trim_end: 0.0,
-
-            render_status: RenderStatus::Idle,
-            is_command_hovered: false,
-            target_resolution: None,
-            target_size_mb: String::new(),
-            command_preview_full: String::new(),
-            command_preview_masked: String::new(),
-
+            // Frame and audio streaming
+            frame_handle: None,
+            timestamp: 0.0,
             is_streaming: false,
             seek_generation: 0,
-
             audio_position: 0.0,
-            has_audio_stream: false,
-            audio_bitrate_bps: None,
             audio_clock: Arc::new(AudioClock::new()),
+            // Extraction state
+            is_extracting: false,
+            last_extraction_request_id: 0,
+            pending_timestamp: None,
+            // Command preview
+            render_status: RenderStatus::Idle,
+            is_command_hovered: false,
+            command_preview_full: String::new(),
+            command_preview_masked: String::new(),
+            // Editing
+            crop_selection: None,
+            trim_start: 0.0,
+            trim_end: 0.0,
+            target_resolution: None,
+            target_size_mb: String::new(),
+            mute_audio: false,
         }
     }
 
@@ -384,6 +383,12 @@ impl Editor {
 
             Message::TargetSizeChanged(value) => {
                 self.target_size_mb = value;
+                self.regenerate_command_preview();
+                Task::none()
+            }
+
+            Message::MuteAudioToggled(mute) => {
+                self.mute_audio = mute;
                 self.regenerate_command_preview();
                 Task::none()
             }
@@ -657,6 +662,7 @@ impl Editor {
         let preview_width = self.preview_width;
         let preview_height = self.preview_height;
         let target_size_str = self.target_size_mb.clone();
+        let mute_audio = self.mute_audio;
 
         // Check if compression is enabled
         let target_size: Option<f64> = target_size_str
@@ -695,6 +701,7 @@ impl Editor {
                         trim_start,
                         trim_end,
                         &dimen,
+                        mute_audio,
                     )
                     .map_err(|e| e.to_string())?;
 
@@ -732,6 +739,7 @@ impl Editor {
                 trim_end,
                 duration,
                 &dimen,
+                mute_audio,
             );
 
             let args = ffmpeg_cmd.args;
@@ -778,6 +786,7 @@ impl Editor {
                 self.trim_start,
                 self.trim_end,
                 &dimen,
+                self.mute_audio,
             ) {
                 Ok(cmd) => {
                     self.command_preview_full = cmd.preview_full;
@@ -798,6 +807,7 @@ impl Editor {
                 self.trim_end,
                 self.duration,
                 &dimen,
+                self.mute_audio,
             );
             self.command_preview_full = cmd.full;
             self.command_preview_masked = cmd.masked;

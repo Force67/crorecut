@@ -1,7 +1,7 @@
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, canvas, column, container, image, mouse_area, pick_list, rich_text, row, space, span,
-    stack, svg, text, text_input,
+    button, canvas, checkbox, column, container, image, mouse_area, pick_list, rich_text, row,
+    space, span, stack, svg, text, text_input,
 };
 use iced::{Alignment, Element, Font, Length};
 
@@ -322,6 +322,11 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
         link_button("Run", Message::RunCommand),
         text(")").size(12).color(gray),
         space::horizontal(),
+        checkbox(state.mute_audio)
+            .label("Mute")
+            .on_toggle(Message::MuteAudioToggled)
+            .text_size(12),
+        space::horizontal().width(12),
         text("Resolution:").size(12).color(gray),
         space::horizontal().width(4),
         pick_list(resolution_options, Some(selected), |opt| {
