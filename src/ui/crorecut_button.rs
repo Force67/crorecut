@@ -8,9 +8,14 @@ use iced::{Alignment, Color, Element, color};
 use super::color as app_colors;
 use super::ripple;
 
-fn button_style(_theme: &iced::Theme, _status: button::Status) -> button::Style {
+fn button_style(_theme: &iced::Theme, status: button::Status) -> button::Style {
+    let background = match status {
+        button::Status::Disabled => app_colors::BUTTON_BG_DISABLED,
+        _ => app_colors::BUTTON_BG,
+    };
+
     button::Style {
-        background: Some(iced::Background::Color(app_colors::BUTTON_BG)),
+        background: Some(iced::Background::Color(background)),
         text_color: Color::WHITE,
         border: iced::Border {
             color: color!(0x3D3D43),
@@ -65,22 +70,24 @@ where
         .align_x(Horizontal::Right)
         .align_y(Vertical::Bottom);
 
-    let btn = {
-        let mut b = button(stack![
-            container(content)
-                .center_x(Shrink)
-                .center_y(Shrink)
-                .padding([8, 16]),
-            corner_overlay,
-        ])
-        .style(button_style)
-        .padding(4);
+    let enabled = on_press.is_some();
 
-        if let Some(msg) = on_press {
-            b = b.on_press(msg);
-        }
-        b
-    };
+    let mut btn = button(stack![
+        container(content)
+            .center_x(Shrink)
+            .center_y(Shrink)
+            .padding([6, 16]),
+        corner_overlay,
+    ])
+    .style(button_style)
+    .padding(4);
 
-    ripple(btn).ripple_color(app_colors::RIPPLE_ON_GRAY).into()
+    if let Some(msg) = on_press {
+        btn = btn.on_press(msg);
+    }
+
+    ripple(btn)
+        .ripple_color(app_colors::RIPPLE_ON_GRAY)
+        .enabled(enabled)
+        .into()
 }

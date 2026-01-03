@@ -12,7 +12,7 @@ pub use command_builder::{
 pub use dir_scanner::scan_videos_directory;
 pub use ffmpeg::{
     RenderEvent, RenderProgress, VideoStreamInfo, extract_frame, get_video_stream_info,
-    render_two_pass_stream, run_ffmpeg_command,
+    run_ffmpeg_cmd, run_two_pass_ffmpeg_cmd,
 };
 pub use metadata::VideoMetadata;
 pub use resolution::Resolution;

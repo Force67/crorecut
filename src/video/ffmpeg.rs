@@ -11,11 +11,22 @@ use super::error::{FfmpegCommandError, FrameExtractionError};
 use crate::utils::format_timestamp_precise;
 
 /// Progress info from FFmpeg encoding
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RenderProgress {
     pub frame: u64,
     pub out_time: f64,
     pub speed: f64,
+    /// Optional status text that overrides the default progress display
+    pub status: Option<String>,
+}
+
+impl RenderProgress {
+    pub fn with_status(status: impl Into<String>) -> Self {
+        Self {
+            status: Some(status.into()),
+            ..Default::default()
+        }
+    }
 }
 
 /// Events emitted during FFmpeg rendering
@@ -56,6 +67,7 @@ impl ProgressParser {
                         frame: self.frame,
                         out_time: self.out_time,
                         speed: self.speed,
+                        status: None,
                     });
                 }
                 _ => {}
@@ -277,17 +289,35 @@ pub async fn has_audio_stream(video_path: &Path) -> bool {
     output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "audio"
 }
 
+/// Reads `-progress pipe:1` output, parses it, and sends progress events.
+async fn stream_ffmpeg_progress(
+    mut child: tokio::process::Child,
+    sender: &mut iced::futures::channel::mpsc::Sender<RenderEvent>,
+) -> Result<std::process::Output, String> {
+    use iced::futures::SinkExt;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+    let mut parser = ProgressParser::new();
+
+    while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+        if let Some(progress) = parser.feed(&line) {
+            let _ = sender.send(RenderEvent::Progress(progress)).await;
+        }
+        line.clear();
+    }
+
+    child.wait_with_output().await.map_err(|e| e.to_string())
+}
+
 /// Creates a stream that runs FFmpeg and yields progress events.
 /// Use with `Task::stream(render_stream(...).map(...))` in iced.
-pub fn run_ffmpeg_command(
-    args: Vec<String>,
-) -> iced::futures::stream::BoxStream<'static, RenderEvent> {
+pub fn run_ffmpeg_cmd(args: Vec<String>) -> iced::futures::stream::BoxStream<'static, RenderEvent> {
     Box::pin(iced::stream::channel(
         100,
         move |mut sender: iced::futures::channel::mpsc::Sender<RenderEvent>| async move {
-            use iced::futures::SinkExt;
-            use tokio::io::{AsyncBufReadExt, BufReader};
-
             let run = async {
                 let mut cmd = Command::new("ffmpeg");
                 cmd.args(["-progress", "pipe:1", "-nostats", "-hide_banner"]);
@@ -299,21 +329,8 @@ pub fn run_ffmpeg_command(
                 cmd.stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped());
 
-                let mut child = cmd.spawn().map_err(|_| "FFmpeg not found".to_string())?;
-
-                let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-                let mut reader = BufReader::new(stdout);
-                let mut line = String::new();
-                let mut parser = ProgressParser::new();
-
-                while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
-                    if let Some(progress) = parser.feed(&line) {
-                        let _ = sender.send(RenderEvent::Progress(progress)).await;
-                    }
-                    line.clear();
-                }
-
-                let output = child.wait_with_output().await.map_err(|e| e.to_string())?;
+                let child = cmd.spawn().map_err(|_| "FFmpeg not found".to_string())?;
+                let output = stream_ffmpeg_progress(child, &mut sender).await?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -323,6 +340,7 @@ pub fn run_ffmpeg_command(
                 Ok(())
             };
 
+            use iced::futures::SinkExt;
             match run.await {
                 Ok(()) => {
                     let _ = sender.send(RenderEvent::Completed).await;
@@ -336,7 +354,7 @@ pub fn run_ffmpeg_command(
 }
 
 /// Creates a stream that runs two-pass FFmpeg compression and yields progress events.
-pub fn render_two_pass_stream(
+pub fn run_two_pass_ffmpeg_cmd(
     pass1_args: Vec<String>,
     pass2_args: Vec<String>,
     working_dir: PathBuf,
@@ -345,10 +363,16 @@ pub fn render_two_pass_stream(
         100,
         move |mut sender: iced::futures::channel::mpsc::Sender<RenderEvent>| async move {
             use iced::futures::SinkExt;
-            use tokio::io::{AsyncBufReadExt, BufReader};
 
             let run = async {
-                // Pass 1: Analysis pass (no progress)
+                // Notify UI that Pass 1 (analysis) is starting
+                let _ = sender
+                    .send(RenderEvent::Progress(RenderProgress::with_status(
+                        "Pass 1 of 2…",
+                    )))
+                    .await;
+
+                // Pass 1: Analysis pass
                 let mut cmd1 = Command::new("ffmpeg");
                 cmd1.arg("-hide_banner");
                 cmd1.args(&pass1_args);
@@ -379,21 +403,8 @@ pub fn render_two_pass_stream(
                 cmd2.stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped());
 
-                let mut child = cmd2.spawn().map_err(|_| "FFmpeg not found")?;
-
-                let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-                let mut reader = BufReader::new(stdout);
-                let mut line = String::new();
-                let mut parser = ProgressParser::new();
-
-                while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
-                    if let Some(progress) = parser.feed(&line) {
-                        let _ = sender.send(RenderEvent::Progress(progress)).await;
-                    }
-                    line.clear();
-                }
-
-                let output = child.wait_with_output().await.map_err(|e| e.to_string())?;
+                let child = cmd2.spawn().map_err(|_| "FFmpeg not found")?;
+                let output = stream_ffmpeg_progress(child, &mut sender).await?;
 
                 // Clean up pass log files
                 let log_files = ["ffmpeg2pass-0.log", "ffmpeg2pass-0.log.mbtree"];

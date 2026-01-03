@@ -268,10 +268,10 @@ fn render_status_row<'a>(status: &'a RenderStatus) -> Element<'a, Message> {
 fn command_section(state: &Editor) -> Element<'_, Message> {
     let will_compress = !state.target_size_mb.is_empty();
     let render_label = match (&state.render_status, will_compress) {
-        (RenderStatus::Rendering, true) => "Rendering and Compressing…",
-        (RenderStatus::Rendering, false) => "Rendering…",
-        (_, true) => "Render and Compress…",
-        (_, false) => "Render…",
+        (RenderStatus::Rendering, true) => "Rendering and compressing…",
+        (RenderStatus::Rendering, false) => "Rendering video…",
+        (_, true) => "Render and compress…",
+        (_, false) => "Render the video…",
     };
 
     column![
@@ -296,15 +296,22 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
             crorecut_button(
                 Some(crate::icons::FFMPEG_SVG),
                 render_label.into(),
-                state.render_progress.map(|p| {
-                    let mins = (p.out_time / 60.0) as u32;
-                    let secs = (p.out_time % 60.0) as u32;
-                    format!(
-                        "frame {}, rendered {:02}:{:02} @ {:.2}x",
-                        p.frame, mins, secs, p.speed
-                    )
+                state.render_progress.as_ref().map(|p| {
+                    if let Some(status) = &p.status {
+                        status.clone()
+                    } else {
+                        let mins = (p.out_time / 60.0) as u32;
+                        let secs = (p.out_time % 60.0) as u32;
+                        format!(
+                            "frame {}, rendered {:02}:{:02} @ {:.2}x",
+                            p.frame, mins, secs, p.speed
+                        )
+                    }
                 }),
-                Some(Message::RunCommand),
+                match state.render_status {
+                    RenderStatus::Rendering => None,
+                    _ => Some(Message::RunCommand),
+                },
             ),
             render_status_row(&state.render_status),
         ]

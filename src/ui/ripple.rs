@@ -22,6 +22,7 @@ pub struct Ripple<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer> {
     content: Element<'a, Message, Theme, Renderer>,
     ripple_color: Color,
     shape: RippleShape,
+    enabled: bool,
 }
 
 impl<'a, Message, Theme, Renderer> Ripple<'a, Message, Theme, Renderer> {
@@ -30,6 +31,7 @@ impl<'a, Message, Theme, Renderer> Ripple<'a, Message, Theme, Renderer> {
             content: content.into(),
             ripple_color: Color::WHITE,
             shape: RippleShape::default(),
+            enabled: true,
         }
     }
 
@@ -42,6 +44,12 @@ impl<'a, Message, Theme, Renderer> Ripple<'a, Message, Theme, Renderer> {
     #[must_use]
     pub fn shape(mut self, shape: RippleShape) -> Self {
         self.shape = shape;
+        self
+    }
+
+    #[must_use]
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
         self
     }
 }
@@ -160,7 +168,7 @@ where
         // Handle ripple animation events
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                if cursor.is_over(bounds) {
+                if self.enabled && cursor.is_over(bounds) {
                     state.is_pressed = true;
 
                     if let Some(cursor_pos) = cursor.position_in(bounds) {

@@ -15,7 +15,7 @@ use crate::utils::CropSelection;
 use crate::utils::ImageTransform;
 use crate::video::{
     CompressionParams, RenderEvent, RenderProgress, Resolution, VideoDimensions, VideoStreamInfo,
-    build_compression_command, build_ffmpeg_command, render_two_pass_stream, run_ffmpeg_command,
+    build_compression_command, build_ffmpeg_command, run_ffmpeg_cmd, run_two_pass_ffmpeg_cmd,
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -708,7 +708,7 @@ impl Editor {
                 .unwrap_or_else(|| PathBuf::from("."));
 
             let output_path = cmd.output_path.clone();
-            let stream = render_two_pass_stream(cmd.pass1_args, cmd.pass2_args, working_dir);
+            let stream = run_two_pass_ffmpeg_cmd(cmd.pass1_args, cmd.pass2_args, working_dir);
 
             Task::stream(stream.map(move |event| match event {
                 RenderEvent::Progress(p) => Message::RenderProgressUpdate(p),
@@ -729,7 +729,7 @@ impl Editor {
             );
 
             let output_path = ffmpeg_cmd.output_path.clone();
-            let stream = run_ffmpeg_command(ffmpeg_cmd.args);
+            let stream = run_ffmpeg_cmd(ffmpeg_cmd.args);
 
             Task::stream(stream.map(move |event| match event {
                 RenderEvent::Progress(p) => Message::RenderProgressUpdate(p),
