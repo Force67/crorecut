@@ -10,7 +10,7 @@ use crate::video::VideoMetadata;
 mod video_item;
 mod view;
 
-const MAX_CONCURRENT_THUMBNAILS: usize = 3;
+const THUMBNAIL_BATCH_SIZE: usize = 6;
 
 pub fn grid_scrollable_id() -> iced::widget::Id {
     iced::widget::Id::new("grid_scrollable")
@@ -30,7 +30,7 @@ pub struct Grid {
     videos: Vec<VideoItem>,
     scan_status: ScanStatus,
     thumbnail_generation_queue: Vec<PathBuf>,
-    thumbnails_in_progress: usize,
+    batch_in_progress: bool,
     scroll_offset: scrollable::RelativeOffset,
 }
 
@@ -38,11 +38,11 @@ pub struct Grid {
 pub enum Message {
     ScanVideosDirectory,
     VideosScanned(Result<Vec<VideoMetadata>, String>),
-    GenerateNextThumbnail,
-    ThumbnailGenerated {
-        video_path: PathBuf,
-        thumbnail_result: Result<Vec<u8>, String>,
-        duration_result: Result<f64, String>,
+    GenerateNextBatch,
+    BatchThumbnailsGenerated {
+        video_paths: Vec<PathBuf>,
+        thumbnail_results: Vec<Result<Vec<u8>, String>>,
+        duration_results: Vec<Result<f64, String>>,
     },
     VideoSelected(PathBuf),
     ScrollChanged(scrollable::Viewport),
@@ -55,7 +55,7 @@ impl Grid {
             videos: Vec::new(),
             scan_status: ScanStatus::NotStarted,
             thumbnail_generation_queue: Vec::new(),
-            thumbnails_in_progress: 0,
+            batch_in_progress: false,
             scroll_offset: scrollable::RelativeOffset::default(),
         }
     }
@@ -96,15 +96,8 @@ impl Grid {
 
                     self.scan_status = ScanStatus::Complete;
 
-                    // Start multiple thumbnail generations in parallel
-                    let mut tasks = Vec::new();
-                    for _ in 0..MAX_CONCURRENT_THUMBNAILS {
-                        tasks.push(Task::perform(
-                            async { Message::GenerateNextThumbnail },
-                            |msg| msg,
-                        ));
-                    }
-                    Task::batch(tasks)
+                    // Start batch thumbnail generation
+                    Task::done(Message::GenerateNextBatch)
                 }
                 Err(error_msg) => {
                     self.scan_status = ScanStatus::Error(error_msg);
@@ -112,75 +105,97 @@ impl Grid {
                 }
             },
 
-            Message::GenerateNextThumbnail => {
-                // Check if we're already at max concurrency
-                if self.thumbnails_in_progress >= MAX_CONCURRENT_THUMBNAILS {
+            Message::GenerateNextBatch => {
+                // Check if we're already processing a batch
+                if self.batch_in_progress {
                     return Task::none();
                 }
 
-                if let Some(video_path) = self.thumbnail_generation_queue.pop() {
-                    if let Some(item) = self
-                        .videos
-                        .iter_mut()
-                        .find(|v| v.metadata.path == video_path)
-                    {
+                if self.thumbnail_generation_queue.is_empty() {
+                    return Task::none();
+                }
+
+                // Pop up to THUMBNAIL_BATCH_SIZE paths from the queue
+                let batch_size = self
+                    .thumbnail_generation_queue
+                    .len()
+                    .min(THUMBNAIL_BATCH_SIZE);
+                let batch_paths: Vec<PathBuf> = self
+                    .thumbnail_generation_queue
+                    .drain(self.thumbnail_generation_queue.len() - batch_size..)
+                    .collect();
+
+                // Mark these videos as generating
+                for path in &batch_paths {
+                    if let Some(item) = self.videos.iter_mut().find(|v| &v.metadata.path == path) {
                         item.thumbnail_state = ThumbnailState::Generating;
                     }
-
-                    self.thumbnails_in_progress += 1;
-
-                    let path_for_thumbnail = video_path.clone();
-                    let path_for_info = video_path.clone();
-                    let path_for_message = video_path;
-                    Task::perform(
-                        async move {
-                            let thumbnail_result =
-                                crate::video::extract_frame(path_for_thumbnail, 1.0)
-                                    .await
-                                    .map_err(|e| e.to_string());
-                            let duration_result =
-                                crate::video::get_video_stream_info(&path_for_info)
-                                    .await
-                                    .map(|info| info.duration)
-                                    .map_err(|e| e.to_string());
-                            (thumbnail_result, duration_result)
-                        },
-                        move |(thumbnail_result, duration_result)| Message::ThumbnailGenerated {
-                            video_path: path_for_message.clone(),
-                            thumbnail_result,
-                            duration_result,
-                        },
-                    )
-                } else {
-                    Task::none()
                 }
+
+                self.batch_in_progress = true;
+
+                let paths_for_message = batch_paths.clone();
+                Task::perform(
+                    async move {
+                        // Run frame extraction and duration fetching in parallel
+                        let thumbnail_results =
+                            crate::video::extract_first_frames_batch(batch_paths.clone()).await;
+                        let duration_futures: Vec<_> = batch_paths
+                            .iter()
+                            .map(|p| crate::video::get_video_stream_info(p))
+                            .collect();
+                        let duration_results: Vec<_> =
+                            iced::futures::future::join_all(duration_futures).await;
+
+                        (
+                            thumbnail_results
+                                .into_iter()
+                                .map(|r| r.map_err(|e| e.to_string()))
+                                .collect::<Vec<_>>(),
+                            duration_results
+                                .into_iter()
+                                .map(|r| r.map(|info| info.duration).map_err(|e| e.to_string()))
+                                .collect::<Vec<_>>(),
+                        )
+                    },
+                    move |(thumbnail_results, duration_results)| {
+                        Message::BatchThumbnailsGenerated {
+                            video_paths: paths_for_message,
+                            thumbnail_results,
+                            duration_results,
+                        }
+                    },
+                )
             }
 
-            Message::ThumbnailGenerated {
-                video_path,
-                thumbnail_result,
-                duration_result,
+            Message::BatchThumbnailsGenerated {
+                video_paths,
+                thumbnail_results,
+                duration_results,
             } => {
-                if let Some(item) = self
-                    .videos
-                    .iter_mut()
-                    .find(|v| v.metadata.path == video_path)
+                for ((path, thumb_result), dur_result) in video_paths
+                    .into_iter()
+                    .zip(thumbnail_results)
+                    .zip(duration_results)
                 {
-                    item.thumbnail_state = match thumbnail_result {
-                        Ok(bytes) => {
-                            let width = (bytes.len() / 360 / 4) as u32; // Height is always 360
-                            ThumbnailState::Ready(image::Handle::from_rgba(width, 360, bytes))
-                        }
-                        Err(error_msg) => ThumbnailState::Failed(error_msg),
-                    };
-                    item.duration = duration_result.ok();
+                    if let Some(item) = self.videos.iter_mut().find(|v| v.metadata.path == path) {
+                        item.thumbnail_state = match thumb_result {
+                            Ok(bytes) => ThumbnailState::Ready(image::Handle::from_rgba(
+                                crate::video::THUMBNAIL_WIDTH,
+                                crate::video::THUMBNAIL_HEIGHT,
+                                bytes,
+                            )),
+                            Err(error_msg) => ThumbnailState::Failed(error_msg),
+                        };
+                        item.duration = dur_result.ok();
+                    }
                 }
 
-                self.thumbnails_in_progress -= 1;
+                self.batch_in_progress = false;
 
-                // Start the next one if there are more in the queue
+                // Start the next batch if there are more in the queue
                 if !self.thumbnail_generation_queue.is_empty() {
-                    Task::perform(async { Message::GenerateNextThumbnail }, |msg| msg)
+                    Task::done(Message::GenerateNextBatch)
                 } else {
                     Task::none()
                 }

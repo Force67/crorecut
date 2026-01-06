@@ -224,6 +224,210 @@ pub async fn extract_frame(
     Ok(frame_bytes)
 }
 
+/// Fixed thumbnail dimensions for batch extraction (16:9 with letterboxing)
+pub const THUMBNAIL_WIDTH: u32 = 640;
+pub const THUMBNAIL_HEIGHT: u32 = 360;
+pub const THUMBNAIL_FRAME_SIZE: usize = (THUMBNAIL_WIDTH * THUMBNAIL_HEIGHT * 4) as usize;
+
+/// Extract first frame from multiple videos in a single FFmpeg invocation.
+/// Uses filter_complex with concat to process all videos at once.
+/// Returns results in the same order as input paths.
+pub async fn extract_first_frames_batch(
+    video_paths: Vec<PathBuf>,
+) -> Vec<Result<Vec<u8>, FrameExtractionError>> {
+    if video_paths.is_empty() {
+        return Vec::new();
+    }
+
+    // Build the filter_complex string
+    let mut filter_parts = Vec::new();
+    let mut concat_inputs = Vec::new();
+
+    for (i, _) in video_paths.iter().enumerate() {
+        // Each input: take first frame, scale with letterboxing, normalize SAR
+        filter_parts.push(format!(
+            "[{i}:v]trim=end_frame=1,setpts=PTS-STARTPTS,\
+             scale={w}:{h}:force_original_aspect_ratio=decrease,\
+             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=rgba[v{i}]",
+            i = i,
+            w = THUMBNAIL_WIDTH,
+            h = THUMBNAIL_HEIGHT
+        ));
+        concat_inputs.push(format!("[v{i}]"));
+    }
+
+    let n = video_paths.len();
+    let filter_complex = format!(
+        "{};{}concat=n={}:v=1:a=0[out]",
+        filter_parts.join(";"),
+        concat_inputs.join(""),
+        n
+    );
+
+    let mut command = Command::new("ffmpeg");
+    command.args(["-hide_banner", "-nostdin"]);
+
+    // Add all input files
+    for path in &video_paths {
+        command.arg("-i").arg(path);
+    }
+
+    command
+        .args(["-filter_complex", &filter_complex])
+        .args(["-map", "[out]"])
+        .args(["-fps_mode", "passthrough"]) // Prevent dropping frames with duplicate timestamps
+        .args(["-f", "rawvideo"])
+        .args(["-pix_fmt", "rgba"])
+        .arg("-")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            // FFmpeg not found - return error for all
+            return video_paths
+                .iter()
+                .map(|_| Err(FrameExtractionError::FFmpegNotFound))
+                .collect();
+        }
+    };
+
+    let output = match child.wait_with_output().await {
+        Ok(output) => output,
+        Err(e) => {
+            return video_paths
+                .iter()
+                .map(|_| Err(FrameExtractionError::ExtractionFailed(e.to_string())))
+                .collect();
+        }
+    };
+
+    // Check if FFmpeg succeeded - if not, fall back to individual extraction
+    if !output.status.success() {
+        log::warn!(
+            "Batch extraction failed, falling back to individual extraction for {} videos",
+            video_paths.len()
+        );
+        return extract_frames_individually(video_paths).await;
+    }
+
+    let frame_bytes = output.stdout;
+    let expected_bytes = n * THUMBNAIL_FRAME_SIZE;
+
+    // Log if we got fewer frames than expected
+    if frame_bytes.len() < expected_bytes {
+        let frames_received = frame_bytes.len() / THUMBNAIL_FRAME_SIZE;
+        log::warn!(
+            "Batch frame extraction: got {} frames, expected {}. Videos in batch:",
+            frames_received,
+            n
+        );
+        for (i, path) in video_paths.iter().enumerate() {
+            log::warn!("  [{}] {}", i, path.display());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            log::warn!("FFmpeg stderr:\n{}", stderr);
+        }
+    }
+
+    // Parse output: split into THUMBNAIL_FRAME_SIZE chunks
+    let mut results = Vec::with_capacity(n);
+    for i in 0..n {
+        let start = i * THUMBNAIL_FRAME_SIZE;
+        let end = start + THUMBNAIL_FRAME_SIZE;
+
+        if end <= frame_bytes.len() {
+            results.push(Ok(frame_bytes[start..end].to_vec()));
+        } else if start < frame_bytes.len() {
+            // Partial frame - treat as error
+            results.push(Err(FrameExtractionError::ExtractionFailed(format!(
+                "Incomplete frame data (got {} bytes, expected {})",
+                frame_bytes.len() - start,
+                THUMBNAIL_FRAME_SIZE
+            ))));
+        } else {
+            // No data for this frame
+            results.push(Err(FrameExtractionError::ExtractionFailed(format!(
+                "No frame data (output was {} bytes, expected at least {})",
+                frame_bytes.len(),
+                end
+            ))));
+        }
+    }
+
+    results
+}
+
+/// Fallback: extract first frame from each video individually.
+/// Used when batch extraction fails (e.g., due to a corrupt file).
+async fn extract_frames_individually(
+    video_paths: Vec<PathBuf>,
+) -> Vec<Result<Vec<u8>, FrameExtractionError>> {
+    let futures: Vec<_> = video_paths
+        .into_iter()
+        .map(|path| extract_single_thumbnail(path))
+        .collect();
+    iced::futures::future::join_all(futures).await
+}
+
+/// Extract a single thumbnail with the same parameters as batch extraction.
+async fn extract_single_thumbnail(video_path: PathBuf) -> Result<Vec<u8>, FrameExtractionError> {
+    let filter = format!(
+        "trim=end_frame=1,setpts=PTS-STARTPTS,\
+         scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=rgba",
+        w = THUMBNAIL_WIDTH,
+        h = THUMBNAIL_HEIGHT
+    );
+
+    let mut command = Command::new("ffmpeg");
+    command
+        .args(["-hide_banner", "-nostdin"])
+        .arg("-i")
+        .arg(&video_path)
+        .args(["-vf", &filter])
+        .args(["-frames:v", "1"])
+        .args(["-f", "rawvideo"])
+        .args(["-pix_fmt", "rgba"])
+        .arg("-")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let child = command
+        .spawn()
+        .map_err(|_| FrameExtractionError::FFmpegNotFound)?;
+
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| FrameExtractionError::ExtractionFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(FrameExtractionError::ExtractionFailed(
+            stderr.lines().last().unwrap_or("Unknown error").to_string(),
+        ));
+    }
+
+    if output.stdout.len() != THUMBNAIL_FRAME_SIZE {
+        return Err(FrameExtractionError::ExtractionFailed(format!(
+            "Unexpected frame size: {} bytes (expected {})",
+            output.stdout.len(),
+            THUMBNAIL_FRAME_SIZE
+        )));
+    }
+
+    Ok(output.stdout)
+}
+
 /// Get the audio bitrate of a video file in bits per second.
 /// Returns None if the video has no audio stream.
 pub async fn get_audio_bitrate(video_path: PathBuf) -> Result<Option<u64>, FrameExtractionError> {
