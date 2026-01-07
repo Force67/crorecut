@@ -15,11 +15,16 @@ use app::Crorecut;
 use iced::window;
 use image::ImageFormat;
 
+fn window_icon() -> iced::window::Icon {
+    let mut icon_reader = image::ImageReader::new(std::io::Cursor::new(icons::WINDOW_ICON));
+    icon_reader.set_format(ImageFormat::Png);
+    let pixels = icon_reader.decode().unwrap().to_rgba8();
+
+    iced::window::icon::from_rgba(pixels.to_vec(), pixels.width(), pixels.height()).unwrap()
+}
+
 fn main() -> iced::Result {
     env_logger::init();
-
-    let icon = window::icon::from_file_data(icons::WINDOW_ICON, Some(ImageFormat::Png))
-        .expect("Failed to load window icon");
 
     iced::application(Crorecut::new, Crorecut::update, Crorecut::view)
         .title(Crorecut::title)
@@ -32,7 +37,7 @@ fn main() -> iced::Result {
         .window(window::Settings {
             size: iced::Size::new(960., 860.),
             min_size: Some(iced::Size::new(800., 540.)),
-            icon: Some(icon),
+            icon: Some(window_icon()),
             ..Default::default()
         })
         .run()
