@@ -88,7 +88,9 @@ impl Grid {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ScanVideosDirectory => {
-                self.scan_status = ScanStatus::Scanning;
+                if !matches!(self.scan_status, ScanStatus::Complete) {
+                    self.scan_status = ScanStatus::Scanning;
+                }
 
                 let videos_dir = self.videos_directory.clone();
                 Task::perform(

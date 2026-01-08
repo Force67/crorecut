@@ -1,5 +1,5 @@
 use iced::widget::{
-    button, column, container, grid, image, mouse_area, row, scrollable, stack, text,
+    button, column, container, grid, image, mouse_area, scrollable, space, stack, text,
 };
 use iced::{Alignment, Border, Element, Length};
 use std::path::Path;
@@ -19,11 +19,15 @@ impl Grid {
                     .into()
             }
 
-            ScanStatus::Complete => videos_grid(
-                &self.videos_directory,
-                &self.videos,
-                self.context_menu.as_ref(),
-            ),
+            ScanStatus::Complete => {
+                let main_content: Element<'_, Message> = if self.videos.is_empty() {
+                    empty_state()
+                } else {
+                    videos_grid(&self.videos, self.context_menu.as_ref())
+                };
+
+                column![refresh_section(&self.videos_directory), main_content].into()
+            }
 
             ScanStatus::Error(error_msg) => container(
                 column![
@@ -98,10 +102,7 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                 .padding(4)
                 .into()
             } else {
-                container(row![])
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .into()
+                space().width(Length::Fill).height(Length::Fill).into()
             };
 
             container(stack![thumbnail_image, duration_badge])
@@ -189,66 +190,68 @@ fn refresh_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
     .into()
 }
 
+fn empty_state<'a>() -> Element<'a, Message> {
+    container(
+        column![
+            text("No videos found").size(20),
+            text("Place video files in your Videos folder").size(14)
+        ]
+        .spacing(10)
+        .align_x(Alignment::Center),
+    )
+    .center_x(Length::Fill)
+    .center_y(Length::Fill)
+    .into()
+}
+
 fn videos_grid<'a>(
-    videos_dir: &'a Path,
     videos: &'a [VideoItem],
     context_menu: Option<&'a GridContextMenu>,
 ) -> Element<'a, Message> {
-    if videos.is_empty() {
-        return column![
-            refresh_section(videos_dir),
-            container(
-                column![
-                    text("No videos found").size(20),
-                    text("Place video files in your Videos folder").size(14)
-                ]
-                .spacing(10)
-                .align_x(Alignment::Center),
-            )
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-        ]
-        .into();
-    }
-
     let video_grid = grid::Grid::with_children(videos.iter().map(video_grid_item))
         .columns(3)
         .spacing(12)
         .height(grid::Sizing::AspectRatio(1.35)); // Slightly taller than 16:9 to fit text
 
-    let grid_content = column![
-        refresh_section(videos_dir),
-        scrollable(container(video_grid).padding(20).width(Length::Fill))
-            .id(grid_scrollable_id())
-            .on_scroll(Message::ScrollChanged)
-    ];
+    let grid_content = scrollable(container(video_grid).padding(20).width(Length::Fill))
+        .id(grid_scrollable_id())
+        .on_scroll(Message::ScrollChanged);
 
     // Wrap in mouse_area for cursor tracking
     let tracked_grid = mouse_area(grid_content).on_move(Message::CursorMoved);
 
-    // Build context menu overlay if active
     let menu_overlay: Option<Element<'a, Message>> = context_menu.map(|menu| {
         let items = if menu.confirming_delete {
-            vec![
-                ContextMenuItem::label("Delete video?"),
-                ContextMenuItem::new("Yes, delete", Message::ContextMenuConfirmDelete)
-                    .color(crate::ui::color::DANGER),
-                ContextMenuItem::new("Cancel", Message::ContextMenuCancelDelete),
-            ]
+            context_menu_delete_confirm()
         } else {
-            vec![
-                ContextMenuItem::new("Open", Message::ContextMenuOpen(menu.video_path.clone())),
-                ContextMenuItem::new(
-                    "Show in files",
-                    Message::ContextMenuShowInFolder(menu.video_path.clone()),
-                ),
-                ContextMenuItem::new("Delete", Message::ContextMenuRequestDelete)
-                    .color(crate::ui::color::DANGER),
-            ]
+            context_menu_default(&menu.video_path)
         };
         context_menu_overlay(menu.position, items, Message::DismissContextMenu)
     });
 
     // Stack to keep widget tree structure consistent
     stack![tracked_grid, menu_overlay].into()
+}
+
+// Context menu items
+
+fn context_menu_default(video_path: &Path) -> Vec<ContextMenuItem<Message>> {
+    vec![
+        ContextMenuItem::new("Open", Message::ContextMenuOpen(video_path.to_path_buf())),
+        ContextMenuItem::new(
+            "Show in files",
+            Message::ContextMenuShowInFolder(video_path.to_path_buf()),
+        ),
+        ContextMenuItem::new("Delete", Message::ContextMenuRequestDelete)
+            .color(crate::ui::color::DANGER),
+    ]
+}
+
+fn context_menu_delete_confirm() -> Vec<ContextMenuItem<Message>> {
+    vec![
+        ContextMenuItem::label("Delete video?"),
+        ContextMenuItem::new("Yes, delete", Message::ContextMenuConfirmDelete)
+            .color(crate::ui::color::DANGER),
+        ContextMenuItem::new("Cancel", Message::ContextMenuCancelDelete),
+    ]
 }
