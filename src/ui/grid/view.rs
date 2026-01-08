@@ -1,10 +1,12 @@
-use iced::widget::{button, column, container, grid, image, row, scrollable, stack, text};
+use iced::widget::{
+    button, column, container, grid, image, mouse_area, row, scrollable, stack, text,
+};
 use iced::{Alignment, Border, Element, Length};
 use std::path::Path;
 
-use super::{Grid, Message, ScanStatus, grid_scrollable_id};
+use super::{Grid, GridContextMenu, Message, ScanStatus, grid_scrollable_id};
 use super::{ThumbnailState, VideoItem};
-use crate::ui::crorecut_button;
+use crate::ui::{ContextMenuItem, context_menu_overlay, crorecut_button};
 use crate::utils::format_duration_short;
 
 impl Grid {
@@ -17,7 +19,11 @@ impl Grid {
                     .into()
             }
 
-            ScanStatus::Complete => videos_grid(&self.videos_directory, &self.videos),
+            ScanStatus::Complete => videos_grid(
+                &self.videos_directory,
+                &self.videos,
+                self.context_menu.as_ref(),
+            ),
 
             ScanStatus::Error(error_msg) => container(
                 column![
@@ -133,9 +139,10 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .height(Length::Fill);
 
     let video_path = video.metadata.path.clone();
+    let video_path_for_context = video_path.clone();
 
     // Wrap in button for click handling and hover effects
-    button(content)
+    let item_button = button(content)
         .on_press(Message::VideoSelected(video_path))
         .width(Length::Fill)
         .height(Length::Fill)
@@ -162,7 +169,11 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                 },
                 ..Default::default()
             }
-        })
+        });
+
+    // Wrap in mouse_area for right-click context menu
+    mouse_area(item_button)
+        .on_right_press(Message::ShowContextMenu(video_path_for_context))
         .into()
 }
 
@@ -178,7 +189,11 @@ fn refresh_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
     .into()
 }
 
-fn videos_grid<'a>(videos_dir: &'a Path, videos: &'a [VideoItem]) -> Element<'a, Message> {
+fn videos_grid<'a>(
+    videos_dir: &'a Path,
+    videos: &'a [VideoItem],
+    context_menu: Option<&'a GridContextMenu>,
+) -> Element<'a, Message> {
     if videos.is_empty() {
         return column![
             refresh_section(videos_dir),
@@ -201,11 +216,39 @@ fn videos_grid<'a>(videos_dir: &'a Path, videos: &'a [VideoItem]) -> Element<'a,
         .spacing(12)
         .height(grid::Sizing::AspectRatio(1.35)); // Slightly taller than 16:9 to fit text
 
-    column![
+    let grid_content = column![
         refresh_section(videos_dir),
         scrollable(container(video_grid).padding(20).width(Length::Fill))
             .id(grid_scrollable_id())
             .on_scroll(Message::ScrollChanged)
-    ]
-    .into()
+    ];
+
+    // Wrap in mouse_area for cursor tracking
+    let tracked_grid = mouse_area(grid_content).on_move(Message::CursorMoved);
+
+    // Build context menu overlay if active
+    let menu_overlay: Option<Element<'a, Message>> = context_menu.map(|menu| {
+        let items = if menu.confirming_delete {
+            vec![
+                ContextMenuItem::label("Delete video?"),
+                ContextMenuItem::new("Yes, delete", Message::ContextMenuConfirmDelete)
+                    .color(crate::ui::color::DANGER),
+                ContextMenuItem::new("Cancel", Message::ContextMenuCancelDelete),
+            ]
+        } else {
+            vec![
+                ContextMenuItem::new("Open", Message::ContextMenuOpen(menu.video_path.clone())),
+                ContextMenuItem::new(
+                    "Show in files",
+                    Message::ContextMenuShowInFolder(menu.video_path.clone()),
+                ),
+                ContextMenuItem::new("Delete", Message::ContextMenuRequestDelete)
+                    .color(crate::ui::color::DANGER),
+            ]
+        };
+        context_menu_overlay(menu.position, items, Message::DismissContextMenu)
+    });
+
+    // Stack to keep widget tree structure consistent
+    stack![tracked_grid, menu_overlay].into()
 }

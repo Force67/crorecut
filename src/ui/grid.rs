@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use iced::Task;
 use iced::advanced::image;
 use iced::widget::scrollable;
+use iced::{Point, Task};
 
 use crate::ui::grid::video_item::{ThumbnailState, VideoItem};
 use crate::video::VideoMetadata;
@@ -11,6 +11,13 @@ mod video_item;
 mod view;
 
 const THUMBNAIL_BATCH_SIZE: usize = 6;
+
+#[derive(Debug, Clone)]
+pub struct GridContextMenu {
+    pub video_path: PathBuf,
+    pub position: Point,
+    pub confirming_delete: bool,
+}
 
 pub fn grid_scrollable_id() -> iced::widget::Id {
     iced::widget::Id::new("grid_scrollable")
@@ -32,6 +39,8 @@ pub struct Grid {
     thumbnail_generation_queue: Vec<PathBuf>,
     batch_in_progress: bool,
     scroll_offset: scrollable::RelativeOffset,
+    context_menu: Option<GridContextMenu>,
+    cursor_position: Point,
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +55,16 @@ pub enum Message {
     },
     VideoSelected(PathBuf),
     ScrollChanged(scrollable::Viewport),
+    // Context menu
+    CursorMoved(Point),
+    ShowContextMenu(PathBuf),
+    DismissContextMenu,
+    ContextMenuOpen(PathBuf),
+    ContextMenuShowInFolder(PathBuf),
+    ContextMenuRequestDelete,
+    ContextMenuConfirmDelete,
+    ContextMenuCancelDelete,
+    VideoDeleted(PathBuf, Result<(), String>),
 }
 
 impl Grid {
@@ -57,6 +76,8 @@ impl Grid {
             thumbnail_generation_queue: Vec::new(),
             batch_in_progress: false,
             scroll_offset: scrollable::RelativeOffset::default(),
+            context_menu: None,
+            cursor_position: Point::ORIGIN,
         }
     }
 
@@ -208,6 +229,95 @@ impl Grid {
 
             Message::ScrollChanged(viewport) => {
                 self.scroll_offset = viewport.relative_offset();
+                self.context_menu = None;
+                Task::none()
+            }
+
+            // Context menu handlers
+            Message::CursorMoved(point) => {
+                self.cursor_position = point;
+                Task::none()
+            }
+
+            Message::ShowContextMenu(path) => {
+                self.context_menu = Some(GridContextMenu {
+                    video_path: path,
+                    position: self.cursor_position,
+                    confirming_delete: false,
+                });
+                Task::none()
+            }
+
+            Message::DismissContextMenu => {
+                self.context_menu = None;
+                Task::none()
+            }
+
+            Message::ContextMenuOpen(path) => {
+                self.context_menu = None;
+                Task::done(Message::VideoSelected(path))
+            }
+
+            Message::ContextMenuShowInFolder(path) => {
+                self.context_menu = None;
+                #[cfg(windows)]
+                {
+                    let _ = std::process::Command::new("explorer.exe")
+                        .arg("/select,")
+                        .arg(&path)
+                        .spawn();
+                }
+                #[cfg(not(windows))]
+                {
+                    if let Some(parent) = path.parent() {
+                        let _ = open::that_detached(parent);
+                    }
+                }
+                Task::none()
+            }
+
+            Message::ContextMenuRequestDelete => {
+                if let Some(menu) = &mut self.context_menu {
+                    menu.confirming_delete = true;
+                }
+                Task::none()
+            }
+
+            Message::ContextMenuConfirmDelete => {
+                if let Some(menu) = self.context_menu.take() {
+                    let path = menu.video_path;
+                    let path_for_result = path.clone();
+                    Task::perform(
+                        async move {
+                            tokio::fs::remove_file(&path)
+                                .await
+                                .map_err(|e| e.to_string())
+                        },
+                        move |result| Message::VideoDeleted(path_for_result, result),
+                    )
+                } else {
+                    Task::none()
+                }
+            }
+
+            Message::ContextMenuCancelDelete => {
+                if let Some(menu) = &mut self.context_menu {
+                    menu.confirming_delete = false;
+                }
+                Task::none()
+            }
+
+            Message::VideoDeleted(path, result) => {
+                match result {
+                    Ok(()) => {
+                        self.videos.retain(|v| v.metadata.path != path);
+                        log::info!("Deleted video: {}", path.display());
+                    }
+                    Err(e) => {
+                        log::error!("Failed to delete {}: {e}", path.display());
+                        // TODO: Add user feedback if deletion failed
+                    }
+                }
                 Task::none()
             }
         }

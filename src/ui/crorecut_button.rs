@@ -18,7 +18,7 @@ fn button_style(_theme: &iced::Theme, status: button::Status) -> button::Style {
         background: Some(iced::Background::Color(background)),
         text_color: Color::WHITE,
         border: iced::Border {
-            color: color!(0x3D3D43),
+            color: app_colors::BUTTON_BORDER,
             width: 1.0,
             radius: 0.0.into(),
         },
