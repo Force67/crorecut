@@ -163,6 +163,7 @@ pub async fn get_video_stream_info(
 pub async fn extract_frame(
     video_path: PathBuf,
     timestamp_seconds: f64,
+    height: u32,
 ) -> Result<Vec<u8>, FrameExtractionError> {
     if !tokio::fs::try_exists(&video_path).await.unwrap_or(false) {
         return Err(FrameExtractionError::VideoNotFound(video_path));
@@ -176,7 +177,7 @@ pub async fn extract_frame(
         .args(["-ss", &timestamp_str])
         .arg("-i")
         .arg(video_path)
-        .args(["-vf", "scale=-1:360"]) // 360p previews
+        .args(["-vf", &format!("scale=-1:{}", height)])
         .args(["-frames:v", "1"])
         .args(["-f", "rawvideo"])
         .args(["-pix_fmt", "rgba"])

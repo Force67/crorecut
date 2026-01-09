@@ -17,6 +17,7 @@ use crate::video::{
     CompressionParams, RenderEvent, RenderProgress, Resolution, VideoDimensions, VideoStreamInfo,
     build_compression_command, build_ffmpeg_command, run_ffmpeg_cmd, run_two_pass_ffmpeg_cmd,
 };
+use iced::widget::image::{Allocation, allocate};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 enum RenderStatus {
@@ -72,7 +73,8 @@ pub struct Editor {
     canvas_bounds: (f32, f32),
 
     // Frame and audio streaming
-    frame_handle: Option<iced::advanced::image::Handle>,
+    frame_allocation: Option<Allocation>,
+    pending_allocation_handle: Option<iced::task::Handle>,
     timestamp: f64,
     is_streaming: bool,
     seek_generation: u64,
@@ -111,6 +113,7 @@ pub enum Message {
         request_id: u64,
         result: Result<Vec<u8>, String>,
     },
+    FrameAllocated(Result<Allocation, iced::widget::image::Error>),
     SliderChanged(f64),
 
     // Crop selection
@@ -170,7 +173,7 @@ impl Editor {
             video_height: 0,
             video_fps: 30.0,
             preview_width: 0.0,
-            preview_height: 360.0,
+            preview_height: 720.0,
             video_file_size_mb: file_size_mb,
             has_audio_stream: false,
             audio_bitrate_bps: None,
@@ -179,7 +182,8 @@ impl Editor {
             mouse_position: (0.0, 0.0),
             canvas_bounds: (1.0, 1.0),
             // Frame and audio streaming
-            frame_handle: None,
+            frame_allocation: None,
+            pending_allocation_handle: None,
             timestamp: 0.0,
             is_streaming: false,
             seek_generation: 0,
@@ -212,6 +216,23 @@ impl Editor {
             self.preview_width,
             self.preview_height,
         )
+    }
+
+    /// Aborts any pending frame allocation and starts allocating a new frame.
+    fn start_frame_allocation(&mut self, frame_bytes: Vec<u8>) -> Task<Message> {
+        if let Some(handle) = self.pending_allocation_handle.take() {
+            handle.abort();
+        }
+
+        let handle = iced::advanced::image::Handle::from_rgba(
+            self.preview_width as u32,
+            self.preview_height as u32,
+            frame_bytes,
+        );
+
+        let (task, abort_handle) = allocate(handle).map(Message::FrameAllocated).abortable();
+        self.pending_allocation_handle = Some(abort_handle);
+        task
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -423,12 +444,16 @@ impl Editor {
                 timestamp,
             } => {
                 if self.is_streaming {
-                    self.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
-                        self.preview_width as u32,
-                        self.preview_height as u32,
-                        frame_bytes,
-                    ));
                     self.timestamp = timestamp;
+                    return self.start_frame_allocation(frame_bytes);
+                }
+                Task::none()
+            }
+
+            Message::FrameAllocated(result) => {
+                self.pending_allocation_handle = None;
+                if let Ok(allocation) = result {
+                    self.frame_allocation = Some(allocation);
                 }
                 Task::none()
             }
@@ -462,10 +487,10 @@ impl Editor {
         self.has_audio_stream = info.has_audio;
         self.audio_bitrate_bps = info.audio_bitrate_bps;
 
-        // Calculate preview dimensions (360p with maintained aspect ratio)
+        // Calculate preview dimensions (720p with maintained aspect ratio)
         if info.height > 0 {
-            self.preview_width = (info.width as f32 * 360.0) / info.height as f32;
-            self.preview_height = 360.0;
+            self.preview_width = (info.width as f32 * 720.0) / info.height as f32;
+            self.preview_height = 720.0;
         }
 
         log::info!(
@@ -479,9 +504,10 @@ impl Editor {
 
         // Now that dimensions are set, extract initial frame
         let video_path = self.video_path.clone();
+        let height = self.preview_height as u32;
         Task::perform(
             async move {
-                crate::video::extract_frame(video_path, 0.0)
+                crate::video::extract_frame(video_path, 0.0, height)
                     .await
                     .map_err(|e| e.to_string())
             },
@@ -507,25 +533,20 @@ impl Editor {
             return Task::none();
         }
 
-        match result {
-            Ok(frame_bytes) => {
-                self.frame_handle = Some(iced::advanced::image::Handle::from_rgba(
-                    self.preview_width as u32,
-                    self.preview_height as u32,
-                    frame_bytes,
-                ));
-            }
+        let allocation_task = match result {
+            Ok(frame_bytes) => self.start_frame_allocation(frame_bytes),
             Err(error_msg) => {
                 log::error!("Frame extraction failed: {error_msg}");
+                Task::none()
             }
-        }
+        };
 
         self.is_extracting = false;
 
         if let Some(pending_ts) = self.pending_timestamp.take() {
-            self.apply_slider_changed(pending_ts)
+            Task::batch([allocation_task, self.apply_slider_changed(pending_ts)])
         } else {
-            Task::none()
+            allocation_task
         }
     }
 
@@ -551,10 +572,11 @@ impl Editor {
 
             let video_path = self.video_path.clone();
             let request_id = self.last_extraction_request_id;
+            let height = self.preview_height as u32;
 
             Task::perform(
                 async move {
-                    crate::video::extract_frame(video_path, new_timestamp)
+                    crate::video::extract_frame(video_path, new_timestamp, height)
                         .await
                         .map_err(|e| e.to_string())
                 },

@@ -5,7 +5,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Font, Length};
 
-use super::{Editor, Message, RenderStatus, Resolution, SelectionCanvas, range_slider};
+use super::{Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, range_slider};
 use crate::ui::crorecut_button;
 use crate::utils::{CropSelection, format_timestamp};
 
@@ -57,7 +57,7 @@ impl Editor {
         column![
             editor_header(&self.video_path),
             frame_display(
-                self.frame_handle.as_ref(),
+                self.frame_allocation.as_ref(),
                 self.crop_selection,
                 self.preview_width,
                 self.preview_height,
@@ -142,7 +142,7 @@ fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
 }
 
 fn frame_display<'a>(
-    frame_handle: Option<&'a iced::advanced::image::Handle>,
+    frame_allocation: Option<&'a Allocation>,
     crop_selection: Option<CropSelection>,
     preview_width: f32,
     preview_height: f32,
@@ -152,9 +152,9 @@ fn frame_display<'a>(
         ..Default::default()
     };
 
-    if let Some(handle) = frame_handle {
+    if let Some(allocation) = frame_allocation {
         container(stack![
-            image(handle.clone())
+            image(allocation.handle().clone())
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .content_fit(iced::ContentFit::Contain),
