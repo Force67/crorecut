@@ -286,7 +286,7 @@ impl Editor {
             }
 
             Message::VideoStreamInfoReceived(result) => match result {
-                Ok(info) => self.apply_video_stream_info(info),
+                Ok(info) => self.stream_info_received(info),
                 Err(error_msg) => {
                     log::error!("Failed to get video info: {error_msg}");
                     Task::none()
@@ -294,13 +294,13 @@ impl Editor {
             },
 
             Message::FrameExtracted { request_id, result } => {
-                self.apply_frame_extracted(request_id, result)
+                self.on_frame_extracted(request_id, result)
             }
 
-            Message::SliderChanged(new_timestamp) => self.apply_slider_changed(new_timestamp),
+            Message::SliderChanged(new_timestamp) => self.seek_to(new_timestamp),
 
             Message::CropMousePressed => {
-                self.apply_crop_mouse_pressed();
+                self.handle_crop_mouse_press();
                 Task::none()
             }
 
@@ -310,7 +310,7 @@ impl Editor {
                 canvas_width,
                 canvas_height,
             } => {
-                self.apply_crop_mouse_moved(x, y, canvas_width, canvas_height);
+                self.handle_crop_mouse_move(x, y, canvas_width, canvas_height);
                 Task::none()
             }
 
@@ -478,7 +478,7 @@ impl Editor {
         }
     }
 
-    fn apply_video_stream_info(&mut self, info: VideoStreamInfo) -> Task<Message> {
+    fn stream_info_received(&mut self, info: VideoStreamInfo) -> Task<Message> {
         self.video_width = info.width;
         self.video_height = info.height;
         self.video_fps = info.fps;
@@ -518,7 +518,7 @@ impl Editor {
         )
     }
 
-    fn apply_frame_extracted(
+    fn on_frame_extracted(
         &mut self,
         request_id: u64,
         result: Result<Vec<u8>, String>,
@@ -544,13 +544,13 @@ impl Editor {
         self.is_extracting = false;
 
         if let Some(pending_ts) = self.pending_timestamp.take() {
-            Task::batch([allocation_task, self.apply_slider_changed(pending_ts)])
+            Task::batch([allocation_task, self.seek_to(pending_ts)])
         } else {
             allocation_task
         }
     }
 
-    fn apply_slider_changed(&mut self, new_timestamp: f64) -> Task<Message> {
+    fn seek_to(&mut self, new_timestamp: f64) -> Task<Message> {
         // Update timestamp immediately for responsive UI
         self.timestamp = new_timestamp;
 
@@ -585,7 +585,7 @@ impl Editor {
         }
     }
 
-    fn apply_crop_mouse_pressed(&mut self) {
+    fn handle_crop_mouse_press(&mut self) {
         let (canvas_x, canvas_y) = self.mouse_position;
 
         // Transform from canvas space to image space
@@ -620,7 +620,7 @@ impl Editor {
         self.regenerate_command_preview();
     }
 
-    fn apply_crop_mouse_moved(&mut self, x: f32, y: f32, canvas_width: f32, canvas_height: f32) {
+    fn handle_crop_mouse_move(&mut self, x: f32, y: f32, canvas_width: f32, canvas_height: f32) {
         // Update canvas bounds with actual values from canvas
         self.canvas_bounds = (canvas_width, canvas_height);
 

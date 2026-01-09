@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Crorecut is a minimalistic video editing tool built with Rust and iced-rs, powered by FFmpeg.
 
+**What "minimalistic" means:**
+- Grid-based video library browser with thumbnail previews
+- Basic editing operations: crop, resize, cut, volume adjustment
+- Real-time video preview with frame-accurate seeking
+- No complex timeline or multi-track editing
+- Focus on speed, compactness and simplicity over feature completeness
+
 ## Tech Stack
 
 - **Language**: Rust
@@ -106,6 +113,12 @@ The API returns JSON with file/directory metadata (name, type, size). Use it to 
 
 This project uses iced's Elm-inspired architecture with `update()`, `view()`, and `Task<Message>` for async operations. Entry point uses `iced::application(boot, update, view).run()`.
 
+**Key components:**
+- `boot()`: Initialize application state
+- `update()`: Handle messages and return new state + tasks
+- `view()`: Render UI from current state
+- `Task<Message>`: Async operations that produce messages
+
 ### Multi-Screen Architecture
 
 Each screen is a self-contained module under `src/ui/` with its own state, message enum, and update/view methods. The app routes messages to screens using nested enums and `.map()`.
@@ -124,6 +137,10 @@ FFmpeg operations are executed via tokio subprocess (`tokio::process::Command`):
 - Place `-ss` (seek) flag **before** `-i` (input) for fast keyframe seeking
 - Example: `ffmpeg -ss 1.0 -i video.mp4 -frames:v 1 output.png`
 
+**Combining filters (example):**
+- Video filters: `-vf "crop=640:480:0:0,scale=1280:720"`
+- Audio filters: `-af "volume=1.5,aresample=44100"`
+
 **Common FFmpeg operations:**
 - **Crop**: `-vf crop=w:h:x:y`
 - **Resize**: `-vf scale=w:h`
@@ -140,7 +157,25 @@ Audio is decoded via FFmpeg subprocess (raw PCM output) and played through `cpal
 - **Use iced's canvas** for custom 2D graphics and overlays (requires `canvas` feature)
 - **Prefer `mouse_area`** for interactive regions that need custom cursor or event handling
 
+### Image Allocation Pattern
+
+When displaying images that update frequently (video frames, animations), use `iced::widget::image::allocate()` to ensure GPU readiness before display. Store `Allocation` instead of `Handle` to prevent flickering.
+
+### Subscriptions for Streaming
+
+For long-running async streams (video frames, audio playback), use iced's `Subscription` system with custom `Recipe` implementations. See `src/video/frame_streaming.rs` and `src/audio/subscription.rs` for examples.
+
+**Pattern:**
+- Implement `iced::advanced::subscription::Recipe`
+- Use channels to communicate between subscription and app
+- Return subscription from `subscription()` method in App trait
+
 ## Code Organization Guidelines
+
+- Keep `update()` clean: if a match arm in `update()` grows beyond ~10 lines, extract it into a helper method
+- Command building: prefer `.args(["-flag", "value"])` over chained `.arg("-flag").arg("value")`
+- Separate view from state: put state and `update()` in `foo.rs`, put `view()` and UI helpers in `foo/view.rs`
+- Use `CREATE_NO_WINDOW` when spawning `Command`s: this is a Windows-specific flag to hide console windows
 
 ### Error Handling
 
