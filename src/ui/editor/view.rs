@@ -108,22 +108,19 @@ fn link_button(label: &str, message: Message) -> iced::widget::Button<'_, Messag
         .padding(0)
 }
 
-fn white_svg(data: &'static [u8], size: u32) -> iced::widget::Svg<'static> {
+fn square_svg(data: &'static [u8], size: u32) -> iced::widget::Svg<'static> {
     svg(svg::Handle::from_memory(data))
         .width(size)
         .height(size)
-        .style(|_, _| svg::Style {
-            color: Some(iced::Color::WHITE),
-        })
 }
 
 fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
     row![
-        button(white_svg(crate::icons::ARROW_SVG, 20))
+        button(square_svg(crate::icons::ARROW_SVG, 22))
             .on_press(Message::GoBack)
             .padding(10)
             .style(icon_button_style),
-        button(white_svg(crate::icons::FOLDER_SVG, 20))
+        button(square_svg(crate::icons::FOLDER_SVG, 22))
             .on_press(Message::OpenParentDir(video_path.to_path_buf()))
             .padding(10)
             .style(icon_button_style),
@@ -205,7 +202,7 @@ fn timeline(
             range_slider(0.0, 1.0, 0.0, 1.0, 0.0)
         },
         row![
-            button(white_svg(icon, 16))
+            button(square_svg(icon, 24))
                 .on_press(msg)
                 .padding(8)
                 .style(|_theme, status| {
