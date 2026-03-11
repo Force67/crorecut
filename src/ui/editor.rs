@@ -476,6 +476,7 @@ impl Editor {
                 log::info!("Audio stream ended, stopping playback");
                 self.is_streaming = false;
                 self.playback_ended = true;
+                self.timestamp = self.duration;
                 Task::none()
             }
 
