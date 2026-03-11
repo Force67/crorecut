@@ -109,9 +109,7 @@ fn link_button(label: &str, message: Message) -> iced::widget::Button<'_, Messag
 }
 
 fn square_svg(data: &'static [u8], size: u32) -> iced::widget::Svg<'static> {
-    svg(svg::Handle::from_memory(data))
-        .width(size)
-        .height(size)
+    svg(svg::Handle::from_memory(data)).width(size).height(size)
 }
 
 fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {

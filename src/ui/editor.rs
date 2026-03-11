@@ -77,6 +77,7 @@ pub struct Editor {
     pending_allocation_handle: Option<iced::task::Handle>,
     timestamp: f64,
     is_streaming: bool,
+    playback_ended: bool,
     seek_generation: u64,
     audio_position: f64,
     audio_clock: Arc<AudioClock>,
@@ -186,6 +187,7 @@ impl Editor {
             pending_allocation_handle: None,
             timestamp: 0.0,
             is_streaming: false,
+            playback_ended: false,
             seek_generation: 0,
             audio_position: 0.0,
             audio_clock: Arc::new(AudioClock::new()),
@@ -425,6 +427,11 @@ impl Editor {
 
             Message::StartPlayback => {
                 if !self.is_streaming {
+                    if self.playback_ended {
+                        self.timestamp = 0.0;
+                        self.seek_generation += 1;
+                        self.playback_ended = false;
+                    }
                     log::info!("Starting frame streaming at timestamp {}", self.timestamp);
                     self.is_streaming = true;
                 }
@@ -468,6 +475,7 @@ impl Editor {
             Message::AudioStreamEnded => {
                 log::info!("Audio stream ended, stopping playback");
                 self.is_streaming = false;
+                self.playback_ended = true;
                 Task::none()
             }
 
