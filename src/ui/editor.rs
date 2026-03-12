@@ -133,6 +133,7 @@ pub enum Message {
 
     // Command
     CopyCommand,
+    CommandCopied,
     RunCommand,
     RenderProgressUpdate(RenderProgress),
     CommandCompleted(Result<PathBuf, String>),
@@ -334,7 +335,10 @@ impl Editor {
                 Task::done(Message::SliderChanged(self.trim_end))
             }
 
-            Message::CopyCommand => iced::clipboard::write(self.command_preview_full.clone()),
+            Message::CopyCommand => iced::clipboard::write(self.command_preview_full.clone())
+                .map(|_| Message::CommandCopied),
+
+            Message::CommandCopied => Task::none(),
 
             Message::RunCommand => self.run_command(),
 

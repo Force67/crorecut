@@ -339,9 +339,12 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
         space::horizontal().width(12),
         text("Resolution:").size(12).color(gray),
         space::horizontal().width(4),
-        pick_list(resolution_options, Some(selected), |opt| {
-            Message::ResolutionChanged(opt.to_resolution())
-        })
+        pick_list(
+            Some(selected),
+            resolution_options,
+            |opt: &ResolutionOption| opt.to_string()
+        )
+        .on_select(|opt| Message::ResolutionChanged(opt.to_resolution()))
         .text_size(12)
         .padding(4),
         space::horizontal().width(8),

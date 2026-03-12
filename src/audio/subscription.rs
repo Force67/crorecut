@@ -195,7 +195,7 @@ pub fn audio_stream_subscription(
     let (sample_rate, channels) = cpal::default_host()
         .default_output_device()
         .and_then(|device| device.default_output_config().ok())
-        .map(|config| (config.sample_rate().0, config.channels()))
+        .map(|config| (config.sample_rate(), config.channels()))
         .unwrap_or((48000, 2)); // Fallback to 48kHz stereo if query fails
 
     subscription::from_recipe(AudioStreamRecipe {

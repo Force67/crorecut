@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleRate, Stream, StreamConfig};
+use cpal::{Stream, StreamConfig};
 
 /// Thread-safe ring buffer for audio samples.
 ///
@@ -92,12 +92,15 @@ impl AudioPlayer {
 
         log::info!(
             "Using audio device: {}",
-            device.name().unwrap_or_else(|_| "unknown".to_string())
+            device
+                .description()
+                .map(|desc| desc.name().to_string())
+                .unwrap_or_else(|_| "unknown".to_string())
         );
 
         let config = StreamConfig {
             channels,
-            sample_rate: SampleRate(sample_rate),
+            sample_rate: sample_rate,
             buffer_size: cpal::BufferSize::Default,
         };
 

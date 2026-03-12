@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = { git = "https://github.com/iced-rs/iced.git", rev = "fd25ff1d3607872cb3163fa5e2d58fe82ab642fb", default-features = false, features = ["wgpu-bare", "crisp", "hinting", "web-colors", "thread-pool", "linux-theme-detection", "x11", "wayland", "tokio", "advanced", "image", "canvas", "svg"] }
-tokio = { version = "1.48", features = ["process", "io-util", "fs"] }
+iced = { git = "https://github.com/iced-rs/iced.git", rev = "3fd974f54a294b2396f68e691703140c61e1e9e5", default-features = false, features = ["wgpu-bare", "crisp", "hinting", "web-colors", "thread-pool", "linux-theme-detection", "x11", "wayland", "tokio", "advanced", "image", "canvas", "svg"] }
+tokio = { version = "1.50", features = ["process", "io-util", "fs"] }
 serde = { version = "1.0", features = ["derive"] }
-wgpu = { version = "27.0", default-features = false, features = ["std", "wgsl", "dx12", "vulkan"] } # TODO: metal for macOS?
+wgpu = { version = "28.0", default-features = false, features = ["std", "wgsl", "dx12", "vulkan"] } # TODO: metal for macOS?
 toml = "0.9"
 dirs = "6.0"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false }
 image = { version = "0.25", default-features = false, features = ["rayon", "png", "bmp", "ico"] }
 open = "5"
-cpal = "0.16"
+cpal = "0.17"
 
 [build-dependencies]
 winres = "0.1"

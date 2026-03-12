@@ -3,7 +3,7 @@
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;
 use iced::advanced::widget::{self, Operation, Tree};
-use iced::advanced::{Clipboard, Shell, Widget};
+use iced::advanced::{Shell, Widget};
 use iced::{Color, Element, Event, Length, Point, Rectangle, Size, Vector, mouse};
 use std::time::Instant;
 
@@ -155,7 +155,6 @@ where
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         renderer: &Renderer,
-        clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
@@ -233,7 +232,6 @@ where
             layout,
             cursor,
             renderer,
-            clipboard,
             shell,
             viewport,
         );
