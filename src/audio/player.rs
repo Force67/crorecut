@@ -28,12 +28,6 @@ impl AudioRingBuffer {
         }
     }
 
-    /// Push samples into the buffer (called from async FFmpeg reader).
-    pub fn push_samples(&self, samples: &[i16]) {
-        let mut buf = self.buffer.lock().unwrap();
-        buf.extend(samples);
-    }
-
     /// Pull samples from the buffer (called from cpal callback).
     /// Returns the number of samples actually pulled.
     pub fn pull_samples(&self, out: &mut [i16]) -> usize {
@@ -59,9 +53,14 @@ impl AudioRingBuffer {
         samples as f64 / (self.sample_rate as f64 * self.channels as f64)
     }
 
-    /// Clear the buffer (used when seeking).
-    pub fn clear(&self) {
-        self.buffer.lock().unwrap().clear();
+    /// Push raw s16le bytes directly into the buffer.
+    pub fn push_s16le_bytes(&self, bytes: &[u8]) {
+        let mut buf = self.buffer.lock().unwrap();
+        buf.extend(
+            bytes
+                .chunks_exact(2)
+                .map(|b| i16::from_le_bytes([b[0], b[1]])),
+        );
     }
 }
 
@@ -112,7 +111,7 @@ impl AudioPlayer {
                 &config,
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
                     let pulled = ring_buffer.pull_samples(data);
-                    samples_played_clone.fetch_add(pulled as u64, Ordering::Relaxed);
+                    samples_played_clone.fetch_add(pulled as u64, Ordering::Release);
                 },
                 |err| {
                     log::error!("Audio stream error: {}", err);
@@ -136,24 +135,12 @@ impl AudioPlayer {
             .map_err(|e| format!("Failed to play audio: {}", e))
     }
 
-    /// Pause audio playback.
-    pub fn pause(&self) -> Result<(), String> {
-        self.stream
-            .pause()
-            .map_err(|e| format!("Failed to pause audio: {}", e))
-    }
-
     /// Get the current playback position in seconds.
     ///
     /// This is the master clock for A/V synchronization.
     pub fn position_seconds(&self) -> f64 {
-        let samples = self.samples_played.load(Ordering::Relaxed);
+        let samples = self.samples_played.load(Ordering::Acquire);
         // Divide by channels because samples_played counts individual channel samples
         samples as f64 / (self.sample_rate as f64 * self.channels as f64)
-    }
-
-    /// Reset the position counter (used when seeking).
-    pub fn reset_position(&self) {
-        self.samples_played.store(0, Ordering::Relaxed);
     }
 }

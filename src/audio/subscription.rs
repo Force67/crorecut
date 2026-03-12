@@ -96,7 +96,7 @@ impl Recipe for AudioStreamRecipe {
                 while ring_buffer.len() < pre_buffer_samples {
                     match streaming.read_samples(&mut read_buffer).await {
                         Ok(0) => break,
-                        Ok(n) => push_s16le_bytes(&ring_buffer, &read_buffer[..n]),
+                        Ok(n) => ring_buffer.push_s16le_bytes(&read_buffer[..n]),
                         Err(e) => {
                             log::error!("Error during pre-buffer: {}", e);
                             return;
@@ -128,7 +128,7 @@ impl Recipe for AudioStreamRecipe {
                     if !ffmpeg_finished {
                         match streaming.read_samples(&mut read_buffer).await {
                             Ok(0) => ffmpeg_finished = true,
-                            Ok(n) => push_s16le_bytes(&ring_buffer, &read_buffer[..n]),
+                            Ok(n) => ring_buffer.push_s16le_bytes(&read_buffer[..n]),
                             Err(e) => {
                                 log::error!("Audio stream error: {}", e);
                                 break;
@@ -170,20 +170,12 @@ impl Recipe for AudioStreamRecipe {
     }
 }
 
-fn push_s16le_bytes(ring_buffer: &AudioRingBuffer, bytes: &[u8]) {
-    let samples: Vec<i16> = bytes
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]))
-        .collect();
-    ring_buffer.push_samples(&samples);
-}
-
 /// Creates an iced subscription that streams audio from a video.
 ///
 /// The `audio_clock` is a shared clock that this subscription writes to.
 /// Video subscription should read from this clock to stay in sync.
 ///
-/// Emits `AudioStreamEvent::PositionUpdate` every ~50ms with the current audio position.
+/// Emits `AudioStreamEvent::PositionUpdate` every ~33ms with the current audio position.
 /// Emits `AudioStreamEvent::StreamEnded` when the audio track ends.
 pub fn audio_stream_subscription(
     video_path: PathBuf,
