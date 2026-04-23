@@ -11,6 +11,7 @@ pub struct SelectionCanvas {
     pub selection: Option<CropSelection>,
     pub preview_width: f32,
     pub preview_height: f32,
+    pub is_dragging: bool,
 }
 
 /// State that holds the canvas bounds (updated during draw)
@@ -34,23 +35,32 @@ impl iced::widget::canvas::Program<Message> for SelectionCanvas {
         // Update canvas bounds in state
         state.bounds = (bounds.width, bounds.height);
 
-        if let Some(position) = cursor.position_in(bounds)
-            && let Event::Mouse(mouse_event) = event
-        {
+        if let Event::Mouse(mouse_event) = event {
             match mouse_event {
                 mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                    return Some(Action::publish(Message::CropMousePressed));
+                    if let Some(position) = cursor.position_in(bounds) {
+                        return Some(Action::publish(Message::CropMousePressed {
+                            x: position.x,
+                            y: position.y,
+                            canvas_width: bounds.width,
+                            canvas_height: bounds.height,
+                        }));
+                    }
                 }
                 mouse::Event::ButtonReleased(mouse::Button::Left) => {
-                    return Some(Action::publish(Message::CropMouseReleased));
+                    if self.is_dragging {
+                        return Some(Action::publish(Message::CropMouseReleased));
+                    }
                 }
-                mouse::Event::CursorMoved { .. } => {
-                    return Some(Action::publish(Message::CropMouseMoved {
-                        x: position.x,
-                        y: position.y,
-                        canvas_width: bounds.width,
-                        canvas_height: bounds.height,
-                    }));
+                mouse::Event::CursorMoved { .. } if self.is_dragging => {
+                    if let Some(position) = cursor.land().position_from(bounds.position()) {
+                        return Some(Action::publish(Message::CropMouseMoved {
+                            x: position.x,
+                            y: position.y,
+                            canvas_width: bounds.width,
+                            canvas_height: bounds.height,
+                        }));
+                    }
                 }
                 _ => {}
             }

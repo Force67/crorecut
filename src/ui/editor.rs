@@ -1,5 +1,5 @@
-use iced::Subscription;
-use iced::Task;
+use iced::event::{self, Event};
+use iced::{Subscription, Task, mouse};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -118,7 +118,12 @@ pub enum Message {
     SliderChanged(f64),
 
     // Crop selection
-    CropMousePressed,
+    CropMousePressed {
+        x: f32,
+        y: f32,
+        canvas_width: f32,
+        canvas_height: f32,
+    },
     CropMouseMoved {
         x: f32,
         y: f32,
@@ -221,6 +226,10 @@ impl Editor {
         )
     }
 
+    fn is_crop_interaction_active(&self) -> bool {
+        !matches!(self.selection_state, SelectionState::Idle)
+    }
+
     /// Aborts any pending frame allocation and starts allocating a new frame.
     fn start_frame_allocation(&mut self, frame_bytes: Vec<u8>) -> Task<Message> {
         if let Some(handle) = self.pending_allocation_handle.take() {
@@ -239,7 +248,7 @@ impl Editor {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        if self.is_streaming {
+        let media_subscription = if self.is_streaming {
             let video_sub = crate::video::frame_streaming::frame_stream_subscription(
                 self.video_path.clone(),
                 self.timestamp,
@@ -278,6 +287,20 @@ impl Editor {
             }
         } else {
             Subscription::none()
+        };
+
+        if self.is_crop_interaction_active() {
+            Subscription::batch([
+                media_subscription,
+                event::listen_with(|event, _status, _window| match event {
+                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                        Some(Message::CropMouseReleased)
+                    }
+                    _ => None,
+                }),
+            ])
+        } else {
+            media_subscription
         }
     }
 
@@ -302,8 +325,13 @@ impl Editor {
 
             Message::SliderChanged(new_timestamp) => self.seek_to(new_timestamp),
 
-            Message::CropMousePressed => {
-                self.handle_crop_mouse_press();
+            Message::CropMousePressed {
+                x,
+                y,
+                canvas_width,
+                canvas_height,
+            } => {
+                self.handle_crop_mouse_press(x, y, canvas_width, canvas_height);
                 Task::none()
             }
 
@@ -318,8 +346,10 @@ impl Editor {
             }
 
             Message::CropMouseReleased => {
-                self.selection_state = SelectionState::Idle;
-                self.regenerate_command_preview();
+                if self.is_crop_interaction_active() {
+                    self.selection_state = SelectionState::Idle;
+                    self.regenerate_command_preview();
+                }
                 Task::none()
             }
 
@@ -598,8 +628,15 @@ impl Editor {
         }
     }
 
-    fn handle_crop_mouse_press(&mut self) {
-        let (canvas_x, canvas_y) = self.mouse_position;
+    fn handle_crop_mouse_press(
+        &mut self,
+        canvas_x: f32,
+        canvas_y: f32,
+        canvas_width: f32,
+        canvas_height: f32,
+    ) {
+        self.canvas_bounds = (canvas_width, canvas_height);
+        self.mouse_position = (canvas_x, canvas_y);
 
         // Transform from canvas space to image space
         let transform = self.get_image_transform();
@@ -674,17 +711,15 @@ impl Editor {
             }
             SelectionState::Resizing { handle, original } => {
                 if let Some(ref mut selection) = self.crop_selection {
-                    resize_selection(selection, handle, img_x, img_y, &original);
-
-                    // Clamp selection to image bounds
-                    selection.x = selection.x.clamp(0.0, self.preview_width);
-                    selection.y = selection.y.clamp(0.0, self.preview_height);
-                    selection.width = selection
-                        .width
-                        .clamp(10.0, self.preview_width - selection.x);
-                    selection.height = selection
-                        .height
-                        .clamp(10.0, self.preview_height - selection.y);
+                    resize_selection(
+                        selection,
+                        handle,
+                        img_x,
+                        img_y,
+                        &original,
+                        self.preview_width,
+                        self.preview_height,
+                    );
                 }
             }
             SelectionState::Idle => {}
@@ -872,35 +907,34 @@ fn resize_selection(
     x: f32,
     y: f32,
     original: &CropSelection,
+    image_width: f32,
+    image_height: f32,
 ) {
-    match handle {
-        ResizeHandle::TopLeft => {
-            selection.x = x;
-            selection.y = y;
-            selection.width = (original.x + original.width) - x;
-            selection.height = (original.y + original.height) - y;
-        }
-        ResizeHandle::TopRight => {
-            selection.y = y;
-            selection.width = x - original.x;
-            selection.height = (original.y + original.height) - y;
-        }
-        ResizeHandle::BottomLeft => {
-            selection.x = x;
-            selection.width = (original.x + original.width) - x;
-            selection.height = y - original.y;
-        }
-        ResizeHandle::BottomRight => {
-            selection.width = x - original.x;
-            selection.height = y - original.y;
-        }
-    }
+    let image_width = image_width.max(0.0);
+    let image_height = image_height.max(0.0);
 
-    // Ensure minimum size and prevent negative dimensions
-    if selection.width < 10.0 {
-        selection.width = 10.0;
-    }
-    if selection.height < 10.0 {
-        selection.height = 10.0;
-    }
+    let original_left = original.x.clamp(0.0, image_width);
+    let original_top = original.y.clamp(0.0, image_height);
+    let original_right = (original.x + original.width).clamp(0.0, image_width);
+    let original_bottom = (original.y + original.height).clamp(0.0, image_height);
+
+    let (anchor_x, anchor_y) = match handle {
+        ResizeHandle::TopLeft => (original_right, original_bottom),
+        ResizeHandle::TopRight => (original_left, original_bottom),
+        ResizeHandle::BottomLeft => (original_right, original_top),
+        ResizeHandle::BottomRight => (original_left, original_top),
+    };
+
+    let drag_x = x.clamp(0.0, image_width);
+    let drag_y = y.clamp(0.0, image_height);
+
+    let left = anchor_x.min(drag_x);
+    let right = anchor_x.max(drag_x);
+    let top = anchor_y.min(drag_y);
+    let bottom = anchor_y.max(drag_y);
+
+    selection.x = left;
+    selection.y = top;
+    selection.width = right - left;
+    selection.height = bottom - top;
 }

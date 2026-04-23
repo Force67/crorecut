@@ -61,6 +61,7 @@ impl Editor {
                 self.crop_selection,
                 self.preview_width,
                 self.preview_height,
+                self.is_crop_interaction_active(),
             ),
             timeline(
                 self.timestamp,
@@ -141,6 +142,7 @@ fn frame_display<'a>(
     crop_selection: Option<CropSelection>,
     preview_width: f32,
     preview_height: f32,
+    is_crop_interaction_active: bool,
 ) -> iced::widget::Container<'a, Message> {
     let style = |_theme: &iced::Theme| container::Style {
         background: Some(iced::Background::Color(iced::Color::BLACK)),
@@ -157,6 +159,7 @@ fn frame_display<'a>(
                 selection: crop_selection,
                 preview_width,
                 preview_height,
+                is_dragging: is_crop_interaction_active,
             })
             .width(Length::Fill)
             .height(Length::Fill)
