@@ -243,7 +243,7 @@ fn context_menu_default(video_path: &Path) -> Vec<ContextMenuItem<Message>> {
             Message::ContextMenuShowInFolder(video_path.to_path_buf()),
         ),
         ContextMenuItem::new("Delete", Message::ContextMenuRequestDelete)
-            .color(crate::ui::color::DANGER),
+            .color(crate::ui::color::DANGER_RED),
     ]
 }
 
@@ -251,7 +251,7 @@ fn context_menu_delete_confirm() -> Vec<ContextMenuItem<Message>> {
     vec![
         ContextMenuItem::label("Delete video?"),
         ContextMenuItem::new("Yes, delete", Message::ContextMenuConfirmDelete)
-            .color(crate::ui::color::DANGER),
+            .color(crate::ui::color::DANGER_RED),
         ContextMenuItem::new("Cancel", Message::ContextMenuCancelDelete),
     ]
 }

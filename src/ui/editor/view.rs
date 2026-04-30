@@ -78,6 +78,9 @@ impl Editor {
             container(command_preview_field(self))
                 .padding([0, 20])
                 .width(Length::Fill),
+            container(render_status_row(&self.render_status))
+                .padding([4, 20])
+                .width(Length::Fill),
             render_params_section(self),
         ]
         .width(Length::Fill)
@@ -290,15 +293,14 @@ fn render_status_row<'a>(status: &'a RenderStatus) -> Element<'a, Message> {
     match status {
         RenderStatus::Idle | RenderStatus::Rendering => row![].into(),
         RenderStatus::Completed(output_path) => {
-            let green = iced::Color::from_rgb(0.4, 0.9, 0.4);
             row![
-                text("Done! (").size(12).color(green),
+                text("Done! (").size(12).color(app_colors::FIR_GREEN),
                 link_button("Open", Message::OpenFile(output_path.clone())),
-                text(", ").size(12).color(green),
+                text(", ").size(12).color(app_colors::FIR_GREEN),
                 link_button("Open Folder", Message::OpenParentDir(output_path.clone())),
-                text(" or ").size(12).color(green),
+                text(" or ").size(12).color(app_colors::FIR_GREEN),
                 link_button("Delete", Message::DeleteFile(output_path.clone())),
-                text(")").size(12).color(green),
+                text(")").size(12).color(app_colors::FIR_GREEN),
             ]
             .into()
         }
@@ -320,42 +322,39 @@ fn render_params_section(state: &Editor) -> Element<'_, Message> {
         (_, false) => "Render the video…",
     };
 
-    column![
+    row![
         command_header(state),
-        row![
-            crorecut_button(
-                Some(crate::icons::FFMPEG_SVG),
-                render_label.into(),
-                state.render_progress.as_ref().map(|p| {
-                    if let Some(status) = &p.status {
-                        status.clone()
-                    } else {
-                        let mins = (p.out_time / 60.0) as u32;
-                        let secs = (p.out_time % 60.0) as u32;
-                        format!(
-                            "frame {}, rendered {:02}:{:02} @ {:.2}x",
-                            p.frame, mins, secs, p.speed
-                        )
-                    }
-                }),
-                match state.render_status {
-                    RenderStatus::Rendering => None,
-                    _ => Some(Message::RunCommand),
-                },
-            ),
-            crorecut_button(
-                Some(crate::icons::COPY_SVG),
-                "Copy Command".into(),
-                None,
-                Some(Message::CopyCommand),
-            ),
-            render_status_row(&state.render_status),
-        ]
-        .align_y(Alignment::Center)
-        .spacing(12)
+        space::horizontal().width(Length::Fill),
+        crorecut_button(
+            Some(crate::icons::COPY_SVG),
+            "Copy Command".into(),
+            None,
+            Some(Message::CopyCommand),
+        ),
+        crorecut_button(
+            Some(crate::icons::FFMPEG_SVG),
+            render_label.into(),
+            state.render_progress.as_ref().map(|p| {
+                if let Some(status) = &p.status {
+                    status.clone()
+                } else {
+                    let mins = (p.out_time / 60.0) as u32;
+                    let secs = (p.out_time % 60.0) as u32;
+                    format!(
+                        "frame {}, rendered {:02}:{:02} @ {:.2}x",
+                        p.frame, mins, secs, p.speed
+                    )
+                }
+            }),
+            match state.render_status {
+                RenderStatus::Rendering => None,
+                _ => Some(Message::RunCommand),
+            },
+        ),
     ]
-    .spacing(8)
-    .padding(20)
+    .align_y(Alignment::Center)
+    .spacing(12)
+    .padding([10, 20])
     .width(Length::Fill)
     .into()
 }
@@ -386,7 +385,6 @@ fn command_preview_field(state: &Editor) -> Element<'_, Message> {
 }
 
 fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
-    let gray = iced::color!(0x999999);
 
     let resolution_options = ResolutionOption::options_for(state.video_height);
     let selected = ResolutionOption::from_resolution(state.target_resolution);
@@ -398,7 +396,7 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
             Message::MuteAudioToggled(!state.mute_audio)
         ),
         space::horizontal().width(12),
-        text("Resolution:").size(12).color(gray),
+        text("Resolution:").size(12).color(app_colors::TEXT),
         space::horizontal().width(4),
         pick_list(
             Some(selected),
@@ -409,7 +407,7 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
         .text_size(12)
         .padding(4),
         space::horizontal().width(8),
-        text("Compress to:").size(12).color(gray),
+        text("Compress to:").size(12).color(app_colors::TEXT),
         space::horizontal().width(4),
         text_input("", &state.target_size_mb)
             .on_input(Message::TargetSizeChanged)
@@ -421,7 +419,7 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
         space::horizontal().width(4),
         text(format!("MB (source: {:.1} MB)", state.video_file_size_mb))
             .size(12)
-            .color(gray),
+            .color(app_colors::TEXT),
     ]
     .align_y(Alignment::Center)
     .spacing(0)
@@ -466,7 +464,7 @@ fn command_preview_text(state: &Editor) -> iced::widget::text::Rich<'_, (), Mess
             .color(app_colors::COMMAND_PREVIEW_TEXT),
         span("input")
             .size(COMMAND_PREVIEW_FONT_SIZE)
-            .color(app_colors::COMMAND_PREVIEW_INPUT),
+            .color(app_colors::FIR_GREEN),
         span(between.to_string())
             .size(COMMAND_PREVIEW_FONT_SIZE)
             .color(app_colors::COMMAND_PREVIEW_TEXT),
