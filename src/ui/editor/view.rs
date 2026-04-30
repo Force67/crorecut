@@ -1,12 +1,12 @@
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, canvas, checkbox, column, container, image, mouse_area, pick_list, rich_text, row,
-    space, span, stack, svg, text, text_input,
+    button, canvas, column, container, image, mouse_area, pick_list, rich_text, row, space, span,
+    stack, svg, text, text_input,
 };
 use iced::{Alignment, Element, Font, Length};
 
 use super::{Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, range_slider};
-use crate::ui::crorecut_button;
+use crate::ui::{crorecut_button, crorecut_checkbox};
 use crate::utils::{CropSelection, format_timestamp};
 
 /// Wrapper for resolution picker that includes "Original" option
@@ -335,10 +335,11 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
         link_button("Run", Message::RunCommand),
         text(")").size(12).color(gray),
         space::horizontal(),
-        checkbox(state.mute_audio)
-            .label("Mute")
-            .on_toggle(Message::MuteAudioToggled)
-            .text_size(12),
+        crorecut_checkbox(
+            state.mute_audio,
+            "Mute",
+            Message::MuteAudioToggled(!state.mute_audio)
+        ),
         space::horizontal().width(12),
         text("Resolution:").size(12).color(gray),
         space::horizontal().width(4),
