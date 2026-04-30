@@ -76,11 +76,11 @@ where
         container(content)
             .center_x(Shrink)
             .center_y(Shrink)
-            .padding([6, 16]),
+            .padding([8, 18]),
         corner_overlay,
     ])
     .style(button_style)
-    .padding(4);
+    .padding(2);
 
     if let Some(msg) = on_press {
         btn = btn.on_press(msg);

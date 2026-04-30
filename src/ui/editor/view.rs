@@ -1,3 +1,4 @@
+use iced::alignment::{Horizontal, Vertical};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, pick_list, rich_text, row, space, span,
@@ -6,8 +7,11 @@ use iced::widget::{
 use iced::{Alignment, Element, Font, Length};
 
 use super::{Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, range_slider};
+use crate::ui::color as app_colors;
 use crate::ui::{crorecut_button, crorecut_checkbox};
 use crate::utils::{CropSelection, format_timestamp};
+
+const COMMAND_PREVIEW_FONT_SIZE: f32 = 12.0;
 
 /// Wrapper for resolution picker that includes "Original" option
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -274,22 +278,7 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
 
     column![
         command_header(state),
-        mouse_area(
-            container(command_preview_text(state))
-                .padding(10)
-                .width(Length::Fill)
-                .style(|_theme| container::Style {
-                    background: Some(iced::Background::Color(iced::color!(0x1a1a1a))),
-                    border: iced::Border {
-                        color: iced::color!(0x4d4d4d),
-                        width: 1.0,
-                        radius: 4.0.into(),
-                    },
-                    ..Default::default()
-                }),
-        )
-        .on_enter(Message::CommandPreviewHovered(true))
-        .on_exit(Message::CommandPreviewHovered(false)),
+        command_preview_field(state),
         row![
             crorecut_button(
                 Some(crate::icons::FFMPEG_SVG),
@@ -319,6 +308,44 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
     .spacing(8)
     .padding(20)
     .width(Length::Fill)
+    .into()
+}
+
+fn command_preview_field(state: &Editor) -> Element<'_, Message> {
+    let corner_dots = svg(svg::Handle::from_memory(crate::icons::CORNER_DOTS_SVG))
+        .width(7)
+        .height(7)
+        .style(|_, _| svg::Style {
+            color: Some(app_colors::CONTROL_ACCENT),
+        });
+
+    let corner_overlay = container(corner_dots)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Horizontal::Right)
+        .align_y(Vertical::Bottom);
+
+    mouse_area(
+        container(stack![
+            container(command_preview_text(state))
+                .padding(6)
+                .width(Length::Fill),
+            corner_overlay,
+        ])
+        .padding(2)
+        .width(Length::Fill)
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(app_colors::COMMAND_PREVIEW_BG)),
+            border: iced::Border {
+                color: app_colors::BUTTON_BORDER,
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }),
+    )
+    .on_enter(Message::CommandPreviewHovered(true))
+    .on_exit(Message::CommandPreviewHovered(false))
     .into()
 }
 
@@ -369,10 +396,9 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
 }
 
 fn command_preview_text(state: &Editor) -> iced::widget::text::Rich<'_, (), Message> {
-    let cmd_gray = iced::color!(0xb3b3b3);
-
     let build_rich_text = |spans| -> iced::widget::text::Rich<'_, (), Message> {
         rich_text::<(), Message, _, _>(spans)
+            .font(Font::MONOSPACE)
             .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
             .line_height(LineHeight::Relative(1.5))
             .height(Length::Fixed(54.0))
@@ -380,23 +406,22 @@ fn command_preview_text(state: &Editor) -> iced::widget::text::Rich<'_, (), Mess
 
     if state.is_command_hovered {
         return build_rich_text(vec![
-            span(&state.command_preview_full).size(12).color(cmd_gray),
+            span(&state.command_preview_full)
+                .size(COMMAND_PREVIEW_FONT_SIZE)
+                .color(app_colors::COMMAND_PREVIEW_TEXT),
         ]);
     }
 
     let cmd_masked = &state.command_preview_masked;
     if !cmd_masked.contains("{input}") || !cmd_masked.contains("{output}") {
-        return build_rich_text(vec![span(cmd_masked).size(12).color(cmd_gray)]);
+        return build_rich_text(vec![
+            span(cmd_masked)
+                .size(COMMAND_PREVIEW_FONT_SIZE)
+                .color(app_colors::COMMAND_PREVIEW_TEXT),
+        ]);
     }
 
     // Highlight {input} and {output} placeholders
-    let italic = Font {
-        style: iced::font::Style::Italic,
-        ..Font::default()
-    };
-    let input_color = iced::Color::from_rgb(0.4, 0.9, 0.5);
-    let output_color = iced::Color::from_rgb(0.5, 0.7, 1.0);
-
     let parts: Vec<&str> = cmd_masked.split("{input}").collect();
     let before_input = parts[0];
     let after_input_parts: Vec<&str> = parts[1].split("{output}").collect();
@@ -404,10 +429,20 @@ fn command_preview_text(state: &Editor) -> iced::widget::text::Rich<'_, (), Mess
     let after_output = after_input_parts.get(1).unwrap_or(&"");
 
     build_rich_text(vec![
-        span(before_input.to_string()).size(12).color(cmd_gray),
-        span("input").size(12).color(input_color).font(italic),
-        span(between.to_string()).size(12).color(cmd_gray),
-        span("output").size(12).color(output_color).font(italic),
-        span(after_output.to_string()).size(12).color(cmd_gray),
+        span(before_input.to_string())
+            .size(COMMAND_PREVIEW_FONT_SIZE)
+            .color(app_colors::COMMAND_PREVIEW_TEXT),
+        span("input")
+            .size(COMMAND_PREVIEW_FONT_SIZE)
+            .color(app_colors::COMMAND_PREVIEW_INPUT),
+        span(between.to_string())
+            .size(COMMAND_PREVIEW_FONT_SIZE)
+            .color(app_colors::COMMAND_PREVIEW_TEXT),
+        span("output")
+            .size(COMMAND_PREVIEW_FONT_SIZE)
+            .color(app_colors::COMMAND_PREVIEW_OUTPUT),
+        span(after_output.to_string())
+            .size(COMMAND_PREVIEW_FONT_SIZE)
+            .color(app_colors::COMMAND_PREVIEW_TEXT),
     ])
 }
