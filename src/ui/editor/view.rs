@@ -300,6 +300,12 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
                     _ => Some(Message::RunCommand),
                 },
             ),
+            crorecut_button(
+                Some(crate::icons::COPY_SVG),
+                "Copy Command".into(),
+                None,
+                Some(Message::CopyCommand),
+            ),
             render_status_row(&state.render_status),
         ]
         .align_y(Alignment::Center)
@@ -356,12 +362,6 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
     let selected = ResolutionOption::from_resolution(state.target_resolution);
 
     row![
-        text("FFmpeg Command (").size(12).color(gray),
-        link_button("Copy", Message::CopyCommand),
-        text(" or ").size(12).color(gray),
-        link_button("Run", Message::RunCommand),
-        text(")").size(12).color(gray),
-        space::horizontal(),
         crorecut_checkbox(
             state.mute_audio,
             "Mute",

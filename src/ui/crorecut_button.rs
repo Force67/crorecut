@@ -57,7 +57,7 @@ where
                 .width(28)
                 .height(28);
             row![icon_svg, label_content]
-                .spacing(10)
+                .spacing(12)
                 .align_y(Alignment::Center)
                 .into()
         }
@@ -76,7 +76,7 @@ where
         container(content)
             .center_x(Shrink)
             .center_y(Shrink)
-            .padding([8, 18]),
+            .padding([12, 16]), // [vertical, horizontal]
         corner_overlay,
     ])
     .style(button_style)
