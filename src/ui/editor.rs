@@ -3,12 +3,12 @@ use iced::{Subscription, Task, mouse};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-mod range_slider;
 mod selection_canvas;
+mod trim_timeline;
 mod view;
 
-use range_slider::range_slider;
 use selection_canvas::SelectionCanvas;
+use trim_timeline::trim_timeline;
 
 use crate::audio::AudioClock;
 use crate::utils::CropSelection;

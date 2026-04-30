@@ -5,7 +5,9 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Font, Length};
 
-use super::{Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, range_slider};
+use super::{
+    Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, trim_timeline,
+};
 use crate::ui::color as app_colors;
 use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox};
 use crate::utils::{CropSelection, format_timestamp};
@@ -73,7 +75,10 @@ impl Editor {
                 self.trim_end,
                 self.is_streaming,
             ),
-            command_section(self),
+            container(command_preview_field(self))
+                .padding([0, 20])
+                .width(Length::Fill),
+            render_params_section(self),
         ]
         .width(Length::Fill)
         .height(Length::Fill)
@@ -255,28 +260,29 @@ fn timeline(
         (crate::icons::PLAY_SVG, Message::StartPlayback)
     };
 
-    column![
+    row![
+        playback_button(icon, msg),
         if duration > 0.0 {
-            range_slider(0.0, duration, trim_start, trim_end, timestamp)
+            trim_timeline(0.0, duration, trim_start, trim_end, timestamp)
         } else {
-            range_slider(0.0, 1.0, 0.0, 1.0, 0.0)
+            trim_timeline(0.0, 1.0, 0.0, 1.0, 0.0)
         },
         row![
-            playback_button(icon, msg),
             text(format_timestamp(timestamp))
                 .size(14)
-                .color(iced::Color::WHITE),
-            text("/").size(14),
+                .color(app_colors::TEXT),
+            text("/").size(14).color(app_colors::TEXT.scale_alpha(0.5)),
             text(format_timestamp(duration))
                 .size(14)
-                .color(iced::Color::from_rgb(0.7, 0.7, 0.7))
+                .color(app_colors::TEXT.scale_alpha(0.5)),
         ]
-        .spacing(12)
+        .spacing(2)
         .align_y(Alignment::Center)
     ]
-    .spacing(8)
-    .padding(20)
+    .spacing(10)
+    .padding([12, 20])
     .width(Length::Fill)
+    .align_y(Alignment::Center)
     .into()
 }
 
@@ -305,7 +311,7 @@ fn render_status_row<'a>(status: &'a RenderStatus) -> Element<'a, Message> {
     }
 }
 
-fn command_section(state: &Editor) -> Element<'_, Message> {
+fn render_params_section(state: &Editor) -> Element<'_, Message> {
     let will_compress = !state.target_size_mb.is_empty();
     let render_label = match (&state.render_status, will_compress) {
         (RenderStatus::Rendering, true) => "Rendering and compressing…",
@@ -316,7 +322,6 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
 
     column![
         command_header(state),
-        command_preview_field(state),
         row![
             crorecut_button(
                 Some(crate::icons::FFMPEG_SVG),
