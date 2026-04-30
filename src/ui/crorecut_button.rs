@@ -1,12 +1,11 @@
 //! Styled ripple button with decorative corner dots and an optional icon
 
-use iced::Length::{Fill, Shrink};
-use iced::alignment::{Horizontal, Vertical};
+use iced::Length::Shrink;
 use iced::widget::{button, column, container, row, stack, svg, text};
-use iced::{Alignment, Color, Element, color};
+use iced::{Alignment, Color, Element};
 
 use super::color as app_colors;
-use super::ripple;
+use super::{corner_dots, ripple};
 
 fn button_style(_theme: &iced::Theme, status: button::Status) -> button::Style {
     let background = match status {
@@ -35,13 +34,6 @@ pub fn crorecut_button<'a, Message>(
 where
     Message: Clone + 'a,
 {
-    let corner_dots = svg(svg::Handle::from_memory(crate::icons::CORNER_DOTS_SVG))
-        .width(7)
-        .height(7)
-        .style(|_, _| svg::Style {
-            color: Some(color!(0x525259)),
-        });
-
     let label_content: Element<'_, Message> = match sublabel {
         Some(sub) => column![
             text(label).color(app_colors::TEXT).size(14),
@@ -64,12 +56,6 @@ where
         None => label_content,
     };
 
-    let corner_overlay = container(corner_dots)
-        .width(Fill)
-        .height(Fill)
-        .align_x(Horizontal::Right)
-        .align_y(Vertical::Bottom);
-
     let enabled = on_press.is_some();
 
     let mut btn = button(stack![
@@ -77,7 +63,7 @@ where
             .center_x(Shrink)
             .center_y(Shrink)
             .padding([12, 16]), // [vertical, horizontal]
-        corner_overlay,
+        corner_dots(),
     ])
     .style(button_style)
     .padding(2);

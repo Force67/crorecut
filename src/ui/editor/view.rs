@@ -1,4 +1,3 @@
-use iced::alignment::{Horizontal, Vertical};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, canvas, column, container, image, mouse_area, pick_list, rich_text, row, space, span,
@@ -8,7 +7,7 @@ use iced::{Alignment, Element, Font, Length};
 
 use super::{Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, range_slider};
 use crate::ui::color as app_colors;
-use crate::ui::{crorecut_button, crorecut_checkbox};
+use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox};
 use crate::utils::{CropSelection, format_timestamp};
 
 const COMMAND_PREVIEW_FONT_SIZE: f32 = 12.0;
@@ -117,6 +116,62 @@ fn square_svg(data: &'static [u8], size: u32) -> iced::widget::Svg<'static> {
     svg(svg::Handle::from_memory(data)).width(size).height(size)
 }
 
+fn playback_button(icon: &'static [u8], message: Message) -> Element<'static, Message> {
+    button(stack![
+        container(square_svg(icon, 24))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+        corner_dots(),
+    ])
+    .on_press(message)
+    .width(Length::Fixed(36.0))
+    .height(Length::Fixed(36.0))
+    .padding(2)
+    .style(|_theme, status| {
+        let background = match status {
+            button::Status::Pressed => app_colors::COMMAND_PREVIEW_BG,
+            _ => app_colors::BUTTON_BG,
+        };
+
+        button::Style {
+            background: Some(iced::Background::Color(background)),
+            border: iced::Border {
+                color: app_colors::BUTTON_BORDER,
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }
+    })
+    .into()
+}
+
+fn compress_input_style(
+    _theme: &iced::Theme,
+    status: iced::widget::text_input::Status,
+) -> iced::widget::text_input::Style {
+    let background = match status {
+        iced::widget::text_input::Status::Hovered
+        | iced::widget::text_input::Status::Focused { is_hovered: true } => {
+            app_colors::COMMAND_PREVIEW_BG
+        }
+        _ => app_colors::BUTTON_BG,
+    };
+
+    iced::widget::text_input::Style {
+        background: iced::Background::Color(background),
+        border: iced::Border {
+            color: app_colors::BUTTON_BORDER,
+            width: 1.0,
+            radius: 0.0.into(),
+        },
+        icon: app_colors::TEXT_SECONDARY,
+        placeholder: app_colors::TEXT_SECONDARY,
+        value: app_colors::TEXT,
+        selection: app_colors::CONTROL_ACCENT,
+    }
+}
+
 fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
     row![
         button(square_svg(crate::icons::ARROW_SVG, 22))
@@ -207,24 +262,7 @@ fn timeline(
             range_slider(0.0, 1.0, 0.0, 1.0, 0.0)
         },
         row![
-            button(square_svg(icon, 24))
-                .on_press(msg)
-                .padding(8)
-                .style(|_theme, status| {
-                    let bg = match status {
-                        button::Status::Hovered => iced::color!(0x414449),
-                        button::Status::Pressed => iced::color!(0x292B2D),
-                        _ => iced::color!(0x303030),
-                    };
-                    button::Style {
-                        background: Some(iced::Background::Color(bg)),
-                        border: iced::Border {
-                            radius: 6.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }),
+            playback_button(icon, msg),
             text(format_timestamp(timestamp))
                 .size(14)
                 .color(iced::Color::WHITE),
@@ -318,25 +356,12 @@ fn command_section(state: &Editor) -> Element<'_, Message> {
 }
 
 fn command_preview_field(state: &Editor) -> Element<'_, Message> {
-    let corner_dots = svg(svg::Handle::from_memory(crate::icons::CORNER_DOTS_SVG))
-        .width(7)
-        .height(7)
-        .style(|_, _| svg::Style {
-            color: Some(app_colors::CONTROL_ACCENT),
-        });
-
-    let corner_overlay = container(corner_dots)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Horizontal::Right)
-        .align_y(Vertical::Bottom);
-
     mouse_area(
         container(stack![
             container(command_preview_text(state))
                 .padding(6)
                 .width(Length::Fill),
-            corner_overlay,
+            corner_dots(),
         ])
         .padding(2)
         .width(Length::Fill)
@@ -383,9 +408,11 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
         space::horizontal().width(4),
         text_input("", &state.target_size_mb)
             .on_input(Message::TargetSizeChanged)
-            .width(Length::Fixed(50.0))
-            .padding(4)
-            .size(12),
+            .style(compress_input_style)
+            .width(Length::Fixed(56.0))
+            .padding([6, 4])
+            .size(12)
+            .line_height(LineHeight::Absolute(20.0.into())),
         space::horizontal().width(4),
         text(format!("MB (source: {:.1} MB)", state.video_file_size_mb))
             .size(12)

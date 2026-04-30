@@ -10,7 +10,7 @@ fn outer_style(_theme: &iced::Theme) -> container::Style {
     container::Style {
         background: Some(Background::Color(app_colors::BUTTON_BG)),
         border: Border {
-            color: app_colors::CONTROL_ACCENT,
+            color: app_colors::BUTTON_BORDER,
             width: 1.0,
             radius: 0.0.into(),
         },
