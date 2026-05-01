@@ -3,6 +3,7 @@ use iced::{Element, Subscription, Task, theme};
 use std::path::PathBuf;
 
 /// Screen enum - Grid state is stored separately on Crorecut since it's the home screen
+#[allow(clippy::large_enum_variant)]
 enum Screen {
     Grid,
     Editor(editor::Editor),

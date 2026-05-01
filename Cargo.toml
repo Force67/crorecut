@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced = { git = "https://github.com/iced-rs/iced.git", rev = "3fd974f54a294b2396f68e691703140c61e1e9e5", default-features = false, features = ["wgpu-bare", "crisp", "hinting", "web-colors", "thread-pool", "linux-theme-detection", "x11", "wayland", "tokio", "advanced", "image", "canvas", "svg"] }
-tokio = { version = "1.50", features = ["process", "io-util", "fs"] }
+iced = { git = "https://github.com/iced-rs/iced.git", rev = "4e0bdcf54aeaadec6753fffd1b1185087bf03b67", default-features = false, features = ["wgpu-bare", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "x11", "wayland", "tokio", "advanced", "image", "canvas", "svg"] }
+tokio = { version = "1.52", features = ["process", "io-util", "fs"] }
 serde = { version = "1.0", features = ["derive"] }
 wgpu = { version = "28.0", default-features = false, features = ["std", "wgsl", "dx12", "vulkan"] } # TODO: metal for macOS?
-toml = "0.9"
+toml = "1.1"
 dirs = "6.0"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false }

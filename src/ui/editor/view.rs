@@ -292,18 +292,16 @@ fn timeline(
 fn render_status_row<'a>(status: &'a RenderStatus) -> Element<'a, Message> {
     match status {
         RenderStatus::Idle | RenderStatus::Rendering => row![].into(),
-        RenderStatus::Completed(output_path) => {
-            row![
-                text("Done! (").size(12).color(app_colors::FIR_GREEN),
-                link_button("Open", Message::OpenFile(output_path.clone())),
-                text(", ").size(12).color(app_colors::FIR_GREEN),
-                link_button("Open Folder", Message::OpenParentDir(output_path.clone())),
-                text(" or ").size(12).color(app_colors::FIR_GREEN),
-                link_button("Delete", Message::DeleteFile(output_path.clone())),
-                text(")").size(12).color(app_colors::FIR_GREEN),
-            ]
-            .into()
-        }
+        RenderStatus::Completed(output_path) => row![
+            text("Done! (").size(12).color(app_colors::FIR_GREEN),
+            link_button("Open", Message::OpenFile(output_path.clone())),
+            text(", ").size(12).color(app_colors::FIR_GREEN),
+            link_button("Open Folder", Message::OpenParentDir(output_path.clone())),
+            text(" or ").size(12).color(app_colors::FIR_GREEN),
+            link_button("Delete", Message::DeleteFile(output_path.clone())),
+            text(")").size(12).color(app_colors::FIR_GREEN),
+        ]
+        .into(),
         RenderStatus::Failed(err) => row![
             text(format!("Failed: {}", err))
                 .size(12)
@@ -385,7 +383,6 @@ fn command_preview_field(state: &Editor) -> Element<'_, Message> {
 }
 
 fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
-
     let resolution_options = ResolutionOption::options_for(state.video_height);
     let selected = ResolutionOption::from_resolution(state.target_resolution);
 

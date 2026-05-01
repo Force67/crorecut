@@ -61,6 +61,7 @@ fn build_trim_args(trim_start: f64, trim_end: f64, duration: f64) -> TrimArgs {
 /// Crop coordinates are automatically scaled from preview space to original video dimensions.
 ///
 /// When no video filters are needed (no crop/resize), uses `-c copy` to avoid re-encoding.
+#[allow(clippy::too_many_arguments)]
 pub fn build_ffmpeg_command(
     input_path: &Path,
     crop: Option<&CropSelection>,
@@ -270,6 +271,7 @@ fn build_video_filter(
 ///
 /// The formula for video bitrate:
 /// `video_bitrate_kbps = (target_size_mb * 8192) / (1.048576 * duration) - audio_bitrate_kbps`
+#[allow(clippy::too_many_arguments)]
 pub fn build_compression_command(
     input_path: &Path,
     params: &CompressionParams,
