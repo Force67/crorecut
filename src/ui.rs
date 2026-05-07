@@ -7,6 +7,7 @@ pub mod grid;
 mod positioned_mouse_area;
 mod ripple;
 mod settings;
+mod styles;
 
 use iced::Length;
 use iced::alignment::{Horizontal, Vertical};

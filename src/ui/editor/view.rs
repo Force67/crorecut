@@ -9,7 +9,7 @@ use super::{
     Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, trim_timeline,
 };
 use crate::ui::color as app_colors;
-use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox, positioned_mouse_area};
+use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox, positioned_mouse_area, styles};
 use crate::utils::{CropSelection, format_timestamp};
 
 const COMMAND_PREVIEW_FONT_SIZE: f32 = 12.0;
@@ -94,34 +94,10 @@ impl Editor {
     }
 }
 
-fn icon_button_style(_theme: &iced::Theme, status: button::Status) -> button::Style {
-    let bg = match status {
-        button::Status::Hovered => iced::color!(0x414449),
-        button::Status::Pressed => iced::color!(0x292B2D),
-        _ => iced::color!(0x202020),
-    };
-    button::Style {
-        background: Some(iced::Background::Color(bg)),
-        border: iced::Border {
-            radius: 8.0.into(),
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-}
-
-fn link_button_style(_theme: &iced::Theme, _status: button::Status) -> button::Style {
-    button::Style {
-        background: None,
-        text_color: iced::color!(0x5197ED),
-        ..Default::default()
-    }
-}
-
 fn link_button(label: &str, message: Message) -> iced::widget::Button<'_, Message> {
     button(text(label).size(12))
         .on_press(message)
-        .style(link_button_style)
+        .style(styles::text_link_button)
         .padding(0)
 }
 
@@ -140,49 +116,8 @@ fn playback_button(icon: &'static [u8], message: Message) -> Element<'static, Me
     .width(Length::Fixed(36.0))
     .height(Length::Fixed(36.0))
     .padding(2)
-    .style(|_theme, status| {
-        let background = match status {
-            button::Status::Pressed => app_colors::COMMAND_PREVIEW_BG,
-            _ => app_colors::BUTTON_BG,
-        };
-
-        button::Style {
-            background: Some(iced::Background::Color(background)),
-            border: iced::Border {
-                color: app_colors::BUTTON_BORDER,
-                width: 1.0,
-                radius: 0.0.into(),
-            },
-            ..Default::default()
-        }
-    })
+    .style(styles::square_icon_button)
     .into()
-}
-
-fn compress_input_style(
-    _theme: &iced::Theme,
-    status: iced::widget::text_input::Status,
-) -> iced::widget::text_input::Style {
-    let background = match status {
-        iced::widget::text_input::Status::Hovered
-        | iced::widget::text_input::Status::Focused { is_hovered: true } => {
-            app_colors::COMMAND_PREVIEW_BG
-        }
-        _ => app_colors::BUTTON_BG,
-    };
-
-    iced::widget::text_input::Style {
-        background: iced::Background::Color(background),
-        border: iced::Border {
-            color: app_colors::BUTTON_BORDER,
-            width: 1.0,
-            radius: 0.0.into(),
-        },
-        icon: app_colors::TEXT_SECONDARY,
-        placeholder: app_colors::TEXT_SECONDARY,
-        value: app_colors::TEXT,
-        selection: app_colors::CONTROL_ACCENT,
-    }
 }
 
 fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
@@ -190,11 +125,11 @@ fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
         button(square_svg(crate::icons::ARROW_SVG, 22))
             .on_press(Message::GoBack)
             .padding(10)
-            .style(icon_button_style),
+            .style(styles::rounded_icon_button),
         button(square_svg(crate::icons::FOLDER_SVG, 22))
             .on_press(Message::OpenParentDir(video_path.to_path_buf()))
             .padding(10)
-            .style(icon_button_style),
+            .style(styles::rounded_icon_button),
         text(
             video_path
                 .file_name()
@@ -451,14 +386,17 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
             |opt: &ResolutionOption| opt.to_string()
         )
         .on_select(|opt| Message::ResolutionChanged(opt.to_resolution()))
+        .style(styles::pick_list)
+        .menu_style(styles::pick_list_menu)
         .text_size(12)
-        .padding(4),
+        .line_height(LineHeight::Absolute(20.0.into()))
+        .padding([6, 8]),
         space::horizontal().width(8),
         text("Compress to:").size(12).color(app_colors::TEXT),
         space::horizontal().width(4),
         text_input("", &state.target_size_mb)
             .on_input(Message::TargetSizeChanged)
-            .style(compress_input_style)
+            .style(styles::text_input)
             .width(Length::Fixed(56.0))
             .padding([6, 4])
             .size(12)
