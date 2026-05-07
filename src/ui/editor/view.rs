@@ -10,7 +10,7 @@ use super::{
 };
 use crate::ui::color as app_colors;
 use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox, positioned_mouse_area, styles};
-use crate::utils::{CropSelection, format_timestamp};
+use crate::utils::{CropSelection, format_duration_mmss};
 
 const COMMAND_PREVIEW_FONT_SIZE: f32 = 12.0;
 
@@ -211,11 +211,11 @@ fn timeline(
             trim_timeline(0.0, 1.0, 0.0, 1.0, 0.0)
         },
         row![
-            text(format_timestamp(timestamp))
+            text(format_duration_mmss(timestamp))
                 .size(14)
                 .color(app_colors::TEXT),
             text("/").size(14).color(app_colors::TEXT.scale_alpha(0.5)),
-            text(format_timestamp(duration))
+            text(format_duration_mmss(duration))
                 .size(14)
                 .color(app_colors::TEXT.scale_alpha(0.5)),
         ]

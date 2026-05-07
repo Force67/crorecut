@@ -7,7 +7,7 @@ use std::path::Path;
 use super::{Grid, GridContextMenu, Message, ScanStatus, grid_scrollable_id};
 use super::{ThumbnailState, VideoItem};
 use crate::ui::{ContextMenuItem, context_menu_overlay, crorecut_button};
-use crate::utils::format_duration_short;
+use crate::utils::format_duration_mmss;
 
 impl Grid {
     pub fn view(&self) -> Element<'_, Message> {
@@ -79,7 +79,7 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
             let duration_badge: Element<'_, Message> = if let Some(duration) = video.duration {
                 container(
                     container(
-                        text(format_duration_short(duration))
+                        text(format_duration_mmss(duration))
                             .size(11)
                             .color(iced::Color::WHITE),
                     )

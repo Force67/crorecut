@@ -28,10 +28,7 @@ pub(crate) fn text_link_button(_theme: &iced::Theme, _status: button::Status) ->
     }
 }
 
-pub(crate) fn square_icon_button(
-    _theme: &iced::Theme,
-    status: button::Status,
-) -> button::Style {
+pub(crate) fn square_icon_button(_theme: &iced::Theme, status: button::Status) -> button::Style {
     let background = match status {
         button::Status::Pressed => app_colors::COMMAND_PREVIEW_BG,
         _ => app_colors::BUTTON_BG,
