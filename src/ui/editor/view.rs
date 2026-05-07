@@ -1,7 +1,7 @@
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, canvas, column, container, image, mouse_area, pick_list, rich_text, row, space, span,
-    stack, svg, text, text_input,
+    button, canvas, column, container, image, mouse_area, pick_list, pin, rich_text, row, space,
+    span, stack, svg, text, text_input,
 };
 use iced::{Alignment, Element, Font, Length};
 
@@ -9,7 +9,7 @@ use super::{
     Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, trim_timeline,
 };
 use crate::ui::color as app_colors;
-use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox};
+use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox, positioned_mouse_area};
 use crate::utils::{CropSelection, format_timestamp};
 
 const COMMAND_PREVIEW_FONT_SIZE: f32 = 12.0;
@@ -59,7 +59,7 @@ impl std::fmt::Display for ResolutionOption {
 
 impl Editor {
     pub fn view(&self) -> Element<'_, Message> {
-        column![
+        let content: Element<'_, Message> = column![
             editor_header(&self.video_path),
             frame_display(
                 self.frame_allocation.as_ref(),
@@ -85,7 +85,12 @@ impl Editor {
         ]
         .width(Length::Fill)
         .height(Length::Fill)
-        .into()
+        .into();
+
+        stack![content, toast_layer(self.copy_toast())]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 }
 
@@ -323,11 +328,14 @@ fn render_params_section(state: &Editor) -> Element<'_, Message> {
     row![
         command_header(state),
         space::horizontal().width(Length::Fill),
-        crorecut_button(
-            Some(crate::icons::COPY_SVG),
-            "Copy Command".into(),
-            None,
-            Some(Message::CopyCommand),
+        positioned_mouse_area(
+            crorecut_button(
+                Some(crate::icons::COPY_SVG),
+                "Copy Command".into(),
+                None,
+                Some(Message::CopyCommand),
+            ),
+            Message::CopyFeedbackAnchorChanged,
         ),
         crorecut_button(
             Some(crate::icons::FFMPEG_SVG),
@@ -354,6 +362,48 @@ fn render_params_section(state: &Editor) -> Element<'_, Message> {
     .spacing(12)
     .padding([10, 20])
     .width(Length::Fill)
+    .into()
+}
+
+fn toast_layer(toast: Option<&super::CopyToast>) -> Element<'static, Message> {
+    const BASE_OFFSET_Y: f32 = 36.0;
+    const OFFSET_X: f32 = 12.0;
+    const TRAVEL_Y: f32 = 24.0;
+
+    let Some(toast) = toast else {
+        return space().width(Length::Fill).height(Length::Fill).into();
+    };
+
+    let position = toast.position;
+    let progress = toast.progress();
+    let eased = 1.0 - (1.0 - progress).powi(3);
+    let alpha = 1.0 - progress;
+    let y = (position.y - BASE_OFFSET_Y - TRAVEL_Y * eased).max(0.0);
+
+    pin(copy_toast_widget(alpha))
+        .x(position.x + OFFSET_X)
+        .y(y)
+        .into()
+}
+
+fn copy_toast_widget(alpha: f32) -> Element<'static, Message> {
+    container(
+        text("Copied!")
+            .size(13)
+            .color(app_colors::TEXT.scale_alpha(alpha)),
+    )
+    .padding([6, 10])
+    .style(move |_theme| container::Style {
+        background: Some(iced::Background::Color(
+            app_colors::BUTTON_BG.scale_alpha(alpha),
+        )),
+        border: iced::Border {
+            color: app_colors::BUTTON_BORDER.scale_alpha(alpha),
+            width: 1.0,
+            radius: 2.0.into(),
+        },
+        ..Default::default()
+    })
     .into()
 }
 

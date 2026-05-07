@@ -4,6 +4,7 @@ mod context_menu;
 mod crorecut_button;
 pub mod editor;
 pub mod grid;
+mod positioned_mouse_area;
 mod ripple;
 mod settings;
 
@@ -14,6 +15,7 @@ use iced::widget::{container, svg};
 use checkbox::crorecut_checkbox;
 pub use context_menu::{ContextMenuItem, context_menu_overlay};
 use crorecut_button::crorecut_button;
+use positioned_mouse_area::positioned_mouse_area;
 use ripple::ripple;
 
 pub(crate) fn corner_dots<'a, Message>() -> iced::widget::Container<'a, Message> {

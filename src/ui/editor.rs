@@ -1,7 +1,8 @@
 use iced::event::{self, Event};
-use iced::{Subscription, Task, mouse};
+use iced::{Point, Subscription, Task, mouse, window};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 mod selection_canvas;
 mod trim_timeline;
@@ -54,6 +55,31 @@ enum SelectionState {
 }
 
 #[derive(Debug, Clone)]
+struct CopyToast {
+    position: Point,
+    started_at: Instant,
+}
+
+impl CopyToast {
+    const DURATION: Duration = Duration::from_millis(900);
+
+    fn new(position: Point) -> Self {
+        Self {
+            position,
+            started_at: Instant::now(),
+        }
+    }
+
+    pub fn progress(&self) -> f32 {
+        (self.started_at.elapsed().as_secs_f32() / Self::DURATION.as_secs_f32()).min(1.0)
+    }
+
+    fn is_finished(&self) -> bool {
+        self.started_at.elapsed() >= Self::DURATION
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Editor {
     // Video metadata (immutable after loading)
     video_path: PathBuf,
@@ -93,6 +119,8 @@ pub struct Editor {
     is_command_hovered: bool,
     command_preview_full: String,
     command_preview_masked: String,
+    copy_toast: Option<CopyToast>,
+    copy_feedback_anchor: Option<Point>,
 
     // Editing
     crop_selection: Option<CropSelection>,
@@ -138,7 +166,9 @@ pub enum Message {
 
     // Command
     CopyCommand,
+    CopyFeedbackAnchorChanged(Point),
     CommandCopied,
+    ToastFrame,
     RunCommand,
     RenderProgressUpdate(RenderProgress),
     CommandCompleted(Result<PathBuf, String>),
@@ -207,6 +237,8 @@ impl Editor {
             is_command_hovered: false,
             command_preview_full: String::new(),
             command_preview_masked: String::new(),
+            copy_toast: None,
+            copy_feedback_anchor: None,
             // Editing
             crop_selection: None,
             trim_start: 0.0,
@@ -289,19 +321,24 @@ impl Editor {
             Subscription::none()
         };
 
-        if self.is_crop_interaction_active() {
-            Subscription::batch([
-                media_subscription,
-                event::listen_with(|event, _status, _window| match event {
-                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
-                        Some(Message::CropMouseReleased)
-                    }
-                    _ => None,
-                }),
-            ])
+        let crop_subscription = if self.is_crop_interaction_active() {
+            event::listen_with(|event, _status, _window| match event {
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::CropMouseReleased)
+                }
+                _ => None,
+            })
         } else {
-            media_subscription
-        }
+            Subscription::none()
+        };
+
+        let toast_subscription = if self.copy_toast.is_some() {
+            window::frames().map(|_| Message::ToastFrame)
+        } else {
+            Subscription::none()
+        };
+
+        Subscription::batch([media_subscription, crop_subscription, toast_subscription])
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -368,7 +405,23 @@ impl Editor {
             Message::CopyCommand => iced::clipboard::write(self.command_preview_full.clone())
                 .map(|_| Message::CommandCopied),
 
-            Message::CommandCopied => Task::none(),
+            Message::CopyFeedbackAnchorChanged(position) => {
+                self.copy_feedback_anchor = Some(position);
+                Task::none()
+            }
+
+            Message::CommandCopied => {
+                let position = self.copy_feedback_anchor.unwrap_or(Point::ORIGIN);
+                self.copy_toast = Some(CopyToast::new(position));
+                Task::none()
+            }
+
+            Message::ToastFrame => {
+                if self.copy_toast.as_ref().is_some_and(CopyToast::is_finished) {
+                    self.copy_toast = None;
+                }
+                Task::none()
+            }
 
             Message::RunCommand => self.run_command(),
 
@@ -519,6 +572,10 @@ impl Editor {
                 Task::none()
             }
         }
+    }
+
+    fn copy_toast(&self) -> Option<&CopyToast> {
+        self.copy_toast.as_ref()
     }
 
     fn stream_info_received(&mut self, info: VideoStreamInfo) -> Task<Message> {
