@@ -1,8 +1,8 @@
 use iced::widget::{
-    column, container, iced as iced_logo, mouse_area, opaque, row, rule, space, stack, text,
-    text_input,
+    button, column, container, iced as iced_logo, image, mouse_area, opaque, rich_text, row, rule,
+    space, span, stack, text, text_input,
 };
-use iced::{Alignment, Background, Border, Color, Element, Length};
+use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 
 use super::{Message, Section, Settings};
 use crate::ui::color as app_colors;
@@ -26,7 +26,7 @@ impl Settings {
 
         let content = match self.active_section {
             Section::General => self.general_view(),
-            Section::About => about_view(),
+            Section::About => self.about_view(),
         };
 
         let body = row![sidebar, divider, content]
@@ -60,7 +60,7 @@ impl Settings {
             ),
             settings_input(
                 "FFmpeg path",
-                "(leave empty to use from PATH)",
+                "(Leave empty to use FFmpeg from PATH)",
                 &self.ffmpeg_path,
                 Message::FfmpegPathChanged,
             ),
@@ -69,13 +69,43 @@ impl Settings {
         .width(Length::Fill)
         .into()
     }
-}
+    fn about_view(&self) -> Element<'_, Message> {
+        let title = rich_text::<(), Message, _, _>(vec![
+            span("Crorecut").size(16).color(app_colors::TEXT),
+            span(format!(" v{}", env!("CARGO_PKG_VERSION")))
+                .size(14)
+                .color(app_colors::TEXT_SECONDARY)
+                .font(Font::MONOSPACE),
+        ]);
 
-fn about_view<'a>() -> Element<'a, Message> {
-    container(iced_logo(24))
+        column![
+            row![
+                image::<image::Handle>(self.window_icon.clone()),
+                column![
+                    title,
+                    button(text("View on GitHub").size(13))
+                        .on_press(Message::OpenGithub)
+                        .style(styles::text_link_button)
+                        .padding(0)
+                ]
+                .spacing(4)
+                .align_x(Alignment::Start),
+            ]
+            .spacing(12)
+            .align_y(Alignment::Center),
+            space().height(Length::Fill),
+            row![
+                text("Made with").size(12).color(app_colors::TEXT_SECONDARY),
+                iced_logo(16),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center)
+        ]
         .width(Length::Fill)
         .height(Length::Fill)
+        .align_x(Alignment::Start)
         .into()
+    }
 }
 
 pub fn modal_overlay<'a, Message>(
@@ -85,14 +115,14 @@ pub fn modal_overlay<'a, Message>(
 where
     Message: Clone + 'a,
 {
-        opaque(
-            mouse_area(
-                iced::widget::center(opaque(content)).style(|_| container::Style {
-                    background: Some(Background::Color(Color {
-                        a: 0.78,
-                        ..app_colors::ALMOST_BLACK
-                    })),
-                    ..Default::default()
+    opaque(
+        mouse_area(
+            iced::widget::center(opaque(content)).style(|_| container::Style {
+                background: Some(Background::Color(Color {
+                    a: 0.78,
+                    ..app_colors::ALMOST_BLACK
+                })),
+                ..Default::default()
             }),
         )
         .on_press(on_blur),
