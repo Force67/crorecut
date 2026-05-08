@@ -6,7 +6,7 @@ pub mod editor;
 pub mod grid;
 mod positioned_mouse_area;
 mod ripple;
-mod settings;
+pub mod settings;
 mod styles;
 
 use iced::Length;

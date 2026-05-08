@@ -1,4 +1,6 @@
-use crate::ui::{editor, grid};
+use crate::ui::{editor, grid, settings};
+use iced::event::{self, Event};
+use iced::keyboard::{self, key};
 use iced::{Element, Subscription, Task, theme};
 use std::path::PathBuf;
 
@@ -19,13 +21,16 @@ pub enum Message {
     // Screen-specific messages (nested)
     Grid(grid::Message),
     Editor(editor::Message),
-    // TODO: Settings(settings::Message),
+    Settings(settings::Message),
+    HideSettings,
     // TODO: About(about::Message),
 }
 
 pub struct Crorecut {
     screen: Screen,
     grid_state: grid::Grid,
+    settings: settings::Settings,
+    show_settings_modal: bool,
 }
 
 impl Crorecut {
@@ -36,6 +41,8 @@ impl Crorecut {
         let app = Self {
             screen: Screen::Grid,
             grid_state,
+            settings: settings::Settings::new(),
+            show_settings_modal: false,
         };
 
         let initial_task = Task::done(Message::Grid(grid::Message::ScanVideosDirectory));
@@ -86,6 +93,10 @@ impl Crorecut {
                     return self.update(Message::NavigateToEditor(path.clone()));
                 }
 
+                if matches!(msg, grid::Message::ShowSettings) {
+                    self.show_settings_modal = true;
+                }
+
                 self.grid_state.update(msg).map(Message::Grid)
             }
 
@@ -101,13 +112,30 @@ impl Crorecut {
                     Task::none()
                 }
             }
+
+            Message::Settings(msg) => self.settings.update(msg).map(Message::Settings),
+
+            Message::HideSettings => {
+                self.show_settings_modal = false;
+                Task::none()
+            }
         }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        match &self.screen {
+        let content = match &self.screen {
             Screen::Grid => self.grid_state.view().map(Message::Grid),
             Screen::Editor(state) => state.view().map(Message::Editor),
+        };
+
+        if self.show_settings_modal {
+            settings::modal(
+                content,
+                self.settings.view().map(Message::Settings),
+                Message::HideSettings,
+            )
+        } else {
+            content
         }
     }
 
@@ -119,9 +147,25 @@ impl Crorecut {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        match &self.screen {
+        let screen_subscription = match &self.screen {
+            Screen::Grid => Subscription::none(),
             Screen::Editor(state) => state.subscription().map(Message::Editor),
-            _ => Subscription::none(),
+        };
+
+        Subscription::batch([screen_subscription, self.settings_subscription()])
+    }
+
+    fn settings_subscription(&self) -> Subscription<Message> {
+        if !self.show_settings_modal {
+            return Subscription::none();
         }
+
+        event::listen_with(|event, _status, _window| match event {
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(key::Named::Escape),
+                ..
+            }) => Some(Message::HideSettings),
+            _ => None,
+        })
     }
 }

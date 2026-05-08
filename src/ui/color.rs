@@ -1,7 +1,9 @@
 // TODO: Extract more colors and add here
 pub const BACKGROUND: iced::Color = iced::color!(0x28292D);
+pub const ALMOST_BLACK: iced::Color = iced::color!(0x080808);
 pub const TEXT: iced::Color = iced::color!(0xBEBEBE);
 pub const FIR_GREEN: iced::Color = iced::color!(0x5EBAA5);
+pub const LIGHT_GRAY: iced::Color = iced::color!(0xB2B2B2);
 pub const BUTTON_BG: iced::Color = iced::color!(0x232326);
 pub const BUTTON_BG_DISABLED: iced::Color = iced::color!(0x1D1D20);
 pub const BUTTON_BORDER: iced::Color = iced::color!(0x3D3D43);

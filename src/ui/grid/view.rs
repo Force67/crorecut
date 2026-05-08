@@ -1,5 +1,5 @@
 use iced::widget::{
-    button, column, container, grid, image, mouse_area, scrollable, space, stack, text,
+    button, column, container, grid, image, mouse_area, row, scrollable, space, stack, text,
 };
 use iced::{Alignment, Border, Element, Length};
 use std::path::Path;
@@ -26,7 +26,7 @@ impl Grid {
                     videos_grid(&self.videos, self.context_menu.as_ref())
                 };
 
-                column![refresh_section(&self.videos_directory), main_content].into()
+                column![top_section(&self.videos_directory), main_content].into()
             }
 
             ScanStatus::Error(error_msg) => container(
@@ -178,13 +178,28 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         .into()
 }
 
-fn refresh_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
-    container(crorecut_button(
+fn top_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
+    let refresh_button: Element<'_, Message> = crorecut_button(
         Some(crate::icons::REFRESH_SVG),
         "Refresh videos".into(),
         Some(videos_dir.display().to_string()),
         Some(Message::ScanVideosDirectory),
-    ))
+    )
+    .into();
+
+    let settings_button: Element<'_, Message> = crorecut_button(
+        Some(crate::icons::REFRESH_SVG),
+        "Settings".into(),
+        Some("Directories, FFmpeg, …".into()),
+        Some(Message::ShowSettings),
+    )
+    .into();
+
+    container(
+        row![refresh_button, settings_button]
+            .spacing(12)
+            .align_y(Alignment::Center),
+    )
     .padding([12, 20])
     .center_x(Length::Fill)
     .into()

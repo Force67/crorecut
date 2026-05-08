@@ -260,38 +260,41 @@ fn render_params_section(state: &Editor) -> Element<'_, Message> {
         (_, false) => "Render the video…",
     };
 
+    let copy_button: Element<'_, Message> = crorecut_button(
+        Some(crate::icons::COPY_SVG),
+        "Copy Command".into(),
+        None,
+        Some(Message::CopyCommand),
+    )
+    .into();
+
+    let render_button: Element<'_, Message> = crorecut_button(
+        Some(crate::icons::FFMPEG_SVG),
+        render_label.into(),
+        state.render_progress.as_ref().map(|p| {
+            if let Some(status) = &p.status {
+                status.clone()
+            } else {
+                let mins = (p.out_time / 60.0) as u32;
+                let secs = (p.out_time % 60.0) as u32;
+                format!(
+                    "frame {}, rendered {:02}:{:02} @ {:.2}x",
+                    p.frame, mins, secs, p.speed
+                )
+            }
+        }),
+        match state.render_status {
+            RenderStatus::Rendering => None,
+            _ => Some(Message::RunCommand),
+        },
+    )
+    .into();
+
     row![
         command_header(state),
         space::horizontal().width(Length::Fill),
-        positioned_mouse_area(
-            crorecut_button(
-                Some(crate::icons::COPY_SVG),
-                "Copy Command".into(),
-                None,
-                Some(Message::CopyCommand),
-            ),
-            Message::CopyFeedbackAnchorChanged,
-        ),
-        crorecut_button(
-            Some(crate::icons::FFMPEG_SVG),
-            render_label.into(),
-            state.render_progress.as_ref().map(|p| {
-                if let Some(status) = &p.status {
-                    status.clone()
-                } else {
-                    let mins = (p.out_time / 60.0) as u32;
-                    let secs = (p.out_time % 60.0) as u32;
-                    format!(
-                        "frame {}, rendered {:02}:{:02} @ {:.2}x",
-                        p.frame, mins, secs, p.speed
-                    )
-                }
-            }),
-            match state.render_status {
-                RenderStatus::Rendering => None,
-                _ => Some(Message::RunCommand),
-            },
-        ),
+        positioned_mouse_area(copy_button, Message::CopyFeedbackAnchorChanged),
+        render_button,
     ]
     .align_y(Alignment::Center)
     .spacing(12)

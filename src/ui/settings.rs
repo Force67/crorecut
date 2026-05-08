@@ -1,34 +1,53 @@
-#![allow(dead_code)] // TODO: Remove this
+mod view;
 
-use iced::{Element, Length::Fill, Task};
+use iced::Task;
+
+pub use view::modal;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Section {
+    #[default]
+    General,
+    About,
+}
 
 #[derive(Debug, Clone, Default)]
-struct Settings {
-    // Placeholder for future settings state
+pub struct Settings {
+    active_section: Section,
+    default_directory: String,
+    ffmpeg_path: String,
 }
 
 #[derive(Debug, Clone)]
-enum Message {
-    // Placeholder for future settings messages
+pub enum Message {
+    SelectSection(Section),
+    DefaultDirectoryChanged(String),
+    FfmpegPathChanged(String),
 }
 
 impl Settings {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            // ...
+    pub fn new() -> Self {
+        Self {
+            default_directory: dirs::video_dir()
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
+            ..Self::default()
         }
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        use iced::widget::{container, text};
+    pub fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::SelectSection(section) => {
+                self.active_section = section;
+            }
+            Message::DefaultDirectoryChanged(value) => {
+                self.default_directory = value;
+            }
+            Message::FfmpegPathChanged(value) => {
+                self.ffmpeg_path = value;
+            }
+        }
 
-        container(text("Settings").size(20))
-            .center_x(Fill)
-            .center_y(Fill)
-            .into()
+        Task::none()
     }
 }

@@ -65,6 +65,8 @@ pub enum Message {
     ContextMenuConfirmDelete,
     ContextMenuCancelDelete,
     VideoDeleted(PathBuf, Result<(), String>),
+    // Settings modal
+    ShowSettings,
 }
 
 impl Grid {
@@ -320,6 +322,11 @@ impl Grid {
                         // TODO: Add user feedback if deletion failed
                     }
                 }
+                Task::none()
+            }
+
+            Message::ShowSettings => {
+                self.context_menu = None;
                 Task::none()
             }
         }
