@@ -2,7 +2,7 @@ mod view;
 
 use iced::Task;
 
-pub use view::modal;
+pub use view::modal_overlay;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Section {

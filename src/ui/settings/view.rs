@@ -78,16 +78,13 @@ fn about_view<'a>() -> Element<'a, Message> {
         .into()
 }
 
-pub fn modal<'a, Message>(
-    base: impl Into<Element<'a, Message>>,
+pub fn modal_overlay<'a, Message>(
     content: impl Into<Element<'a, Message>>,
     on_blur: Message,
 ) -> Element<'a, Message>
 where
     Message: Clone + 'a,
 {
-    stack![
-        base.into(),
         opaque(
             mouse_area(
                 iced::widget::center(opaque(content)).style(|_| container::Style {
@@ -96,11 +93,10 @@ where
                         ..app_colors::ALMOST_BLACK
                     })),
                     ..Default::default()
-                })
-            )
-            .on_press(on_blur)
+            }),
         )
-    ]
+        .on_press(on_blur),
+    )
     .into()
 }
 

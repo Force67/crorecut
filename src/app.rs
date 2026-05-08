@@ -1,6 +1,7 @@
 use crate::ui::{editor, grid, settings};
 use iced::event::{self, Event};
 use iced::keyboard::{self, key};
+use iced::widget::stack;
 use iced::{Element, Subscription, Task, theme};
 use std::path::PathBuf;
 
@@ -128,15 +129,14 @@ impl Crorecut {
             Screen::Editor(state) => state.view().map(Message::Editor),
         };
 
-        if self.show_settings_modal {
-            settings::modal(
-                content,
+        let settings_overlay: Option<Element<'_, Message>> = self.show_settings_modal.then(|| {
+            settings::modal_overlay(
                 self.settings.view().map(Message::Settings),
                 Message::HideSettings,
             )
-        } else {
-            content
-        }
+        });
+
+        stack![content, settings_overlay].into()
     }
 
     pub fn style(&self, _theme: &iced::Theme) -> iced::theme::Style {
