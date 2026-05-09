@@ -1,6 +1,6 @@
 use iced::widget::{
-    button, column, container, iced as iced_logo, image, mouse_area, opaque, rich_text, row, rule,
-    space, span, stack, text, text_input,
+    button, column, container, iced as iced_logo, image, mouse_area, opaque, pin, rich_text, row,
+    rule, space, span, stack, text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 
@@ -8,14 +8,29 @@ use super::{Message, Section, Settings};
 use crate::ui::color as app_colors;
 use crate::ui::{corner_dots, crorecut_button, styles};
 
+const SIDEBAR_WIDTH: f32 = 150.0;
+const SIDEBAR_BUTTON_HEIGHT: f32 = 48.0;
+const SIDEBAR_BUTTON_SPACING: f32 = 4.0;
+const INDICATOR_WIDTH: f32 = 2.0;
+const INDICATOR_HEIGHT: f32 = 24.0;
+const INDICATOR_BUTTON_GAP: f32 = 1.0;
+const SIDEBAR_ROW_SPAN: f32 = SIDEBAR_BUTTON_HEIGHT + SIDEBAR_BUTTON_SPACING;
+const INDICATOR_Y_OFFSET: f32 = (SIDEBAR_BUTTON_HEIGHT - INDICATOR_HEIGHT) / 2.0;
+
 impl Settings {
     pub fn view(&self) -> Element<'_, Message> {
-        let sidebar = column![
-            sidebar_button("General", Section::General, self.active_section),
-            sidebar_button("About", Section::About, self.active_section),
+        let sidebar_buttons = column![
+            sidebar_button("General", Section::General),
+            sidebar_button("About", Section::About),
         ]
-        .spacing(4)
-        .width(150);
+        .spacing(SIDEBAR_BUTTON_SPACING)
+        .width(SIDEBAR_WIDTH);
+
+        let sidebar = stack![
+            sidebar_buttons,
+            pin(sidebar_indicator()).x(0.0).y(self.indicator_y()),
+        ]
+        .width(SIDEBAR_WIDTH);
 
         let divider = rule::vertical(1).style(|_| rule::Style {
             color: app_colors::BUTTON_BORDER,
@@ -106,6 +121,10 @@ impl Settings {
         .align_x(Alignment::Start)
         .into()
     }
+
+    fn indicator_y(&self) -> f32 {
+        INDICATOR_Y_OFFSET + self.indicator_index() * SIDEBAR_ROW_SPAN
+    }
 }
 
 pub fn modal_overlay<'a, Message>(
@@ -127,10 +146,9 @@ where
         )
         .on_press(on_blur),
     )
-    .into()
 }
 
-fn sidebar_button(label: &str, section: Section, active_section: Section) -> Element<'_, Message> {
+fn sidebar_button(label: &str, section: Section) -> Element<'_, Message> {
     let button: Element<'_, Message> = crorecut_button(
         None,
         label.to_string(),
@@ -140,23 +158,25 @@ fn sidebar_button(label: &str, section: Section, active_section: Section) -> Ele
     .width(Length::Fill)
     .into();
 
-    let indicator = container("").width(2).height(24).style(move |_| {
-        let background = if section == active_section {
-            Some(Background::Color(app_colors::LIGHT_GRAY))
-        } else {
-            None
-        };
+    row![
+        space().width(INDICATOR_WIDTH),
+        space().width(INDICATOR_BUTTON_GAP),
+        button
+    ]
+    .width(Length::Fill)
+    .align_y(Alignment::Center)
+    .height(SIDEBAR_BUTTON_HEIGHT)
+    .into()
+}
 
-        container::Style {
-            background,
+fn sidebar_indicator() -> Element<'static, Message> {
+    container("")
+        .width(INDICATOR_WIDTH)
+        .height(INDICATOR_HEIGHT)
+        .style(|_| container::Style {
+            background: Some(Background::Color(app_colors::LIGHT_GRAY)),
             ..Default::default()
-        }
-    });
-
-    row![indicator, space().width(1), button]
-        .width(Length::Fill)
-        .align_y(Alignment::Center)
-        .height(Length::Shrink)
+        })
         .into()
 }
 

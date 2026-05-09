@@ -160,12 +160,17 @@ impl Crorecut {
             return Subscription::none();
         }
 
-        event::listen_with(|event, _status, _window| match event {
+        let close_subscription = event::listen_with(|event, _status, _window| match event {
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key: keyboard::Key::Named(key::Named::Escape),
                 ..
             }) => Some(Message::HideSettings),
             _ => None,
-        })
+        });
+
+        Subscription::batch([
+            close_subscription,
+            self.settings.subscription().map(Message::Settings),
+        ])
     }
 }
