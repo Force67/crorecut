@@ -1,8 +1,8 @@
 use iced::widget::{
     button, column, container, iced as iced_logo, image, mouse_area, opaque, pin, rich_text, row,
-    rule, space, span, stack, text, text_input,
+    space, span, stack, text, text_input,
 };
-use iced::{Alignment, Background, Border, Color, Element, Font, Length};
+use iced::{Alignment, Background, Color, Element, Font, Length};
 
 use super::{Message, Section, Settings};
 use crate::ui::color as app_colors;
@@ -26,17 +26,18 @@ impl Settings {
         .spacing(SIDEBAR_BUTTON_SPACING)
         .width(SIDEBAR_WIDTH);
 
-        let sidebar = stack![
-            sidebar_buttons,
-            pin(sidebar_indicator()).x(0.0).y(self.indicator_y()),
-        ]
-        .width(SIDEBAR_WIDTH);
-
-        let divider = rule::vertical(1).style(|_| rule::Style {
-            color: app_colors::BUTTON_BORDER,
-            radius: 0.0.into(),
-            fill_mode: rule::FillMode::Full,
-            snap: true,
+        let sidebar = container(
+            stack![
+                sidebar_buttons,
+                pin(sidebar_indicator()).x(0.0).y(self.indicator_y()),
+            ]
+            .width(SIDEBAR_WIDTH),
+        )
+        .height(Length::Fill)
+        .padding(18)
+        .style(|_| container::Style {
+            background: Some(Background::Color(app_colors::DARK_GRAY)),
+            ..Default::default()
         });
 
         let content = match self.active_section {
@@ -44,21 +45,20 @@ impl Settings {
             Section::About => self.about_view(),
         };
 
-        let body = row![sidebar, divider, content]
-            .spacing(18)
+        let content = container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(18);
+
+        let body = row![sidebar, content]
             .height(Length::Fill)
             .width(Length::Fill);
 
-        container(stack![container(body).padding(20), corner_dots(),])
+        container(stack![body, corner_dots()])
             .width(720)
             .height(420)
             .style(|_| container::Style {
                 background: Some(Background::Color(app_colors::BUTTON_BG)),
-                border: Border {
-                    color: app_colors::BUTTON_BORDER,
-                    width: 1.0,
-                    radius: 0.0.into(),
-                },
                 ..Default::default()
             })
             .padding(2)
