@@ -188,7 +188,7 @@ fn top_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
     .into();
 
     let settings_button: Element<'_, Message> = crorecut_button(
-        Some(crate::icons::REFRESH_SVG),
+        Some(crate::icons::GEAR_SVG),
         "Settings".into(),
         Some("Directories, FFmpeg, …".into()),
         Some(Message::ShowSettings),

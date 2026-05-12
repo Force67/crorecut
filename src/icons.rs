@@ -7,4 +7,5 @@ pub const FFMPEG_SVG: &[u8] = include_bytes!("../assets/ffmpeg.svg");
 pub const COPY_SVG: &[u8] = include_bytes!("../assets/copy.svg");
 pub const CORNER_DOTS_SVG: &[u8] = include_bytes!("../assets/corner_dots.svg");
 pub const REFRESH_SVG: &[u8] = include_bytes!("../assets/refresh.svg");
+pub const GEAR_SVG: &[u8] = include_bytes!("../assets/gear.svg");
 pub const TRIM_HANDLE_SVG: &[u8] = include_bytes!("../assets/trim_handle.svg");
