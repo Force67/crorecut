@@ -13,6 +13,21 @@ pub fn format_duration_mmss(seconds: f64) -> String {
     format!("{total_minutes:02}:{secs:02}")
 }
 
+pub fn format_duration_human_readable(seconds: f64) -> String {
+    let total_seconds = seconds.max(0.0).round() as u64;
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    if hours > 0 {
+        format!("{hours}h {minutes:02}m")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds:02}s")
+    } else {
+        format!("{seconds}s")
+    }
+}
+
 /// Represents the transform from canvas space to image space
 #[derive(Debug, Clone, Copy)]
 pub struct ImageTransform {

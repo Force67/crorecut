@@ -10,7 +10,7 @@ use super::{
 };
 use crate::ui::color as app_colors;
 use crate::ui::{corner_dots, crorecut_button, crorecut_checkbox, positioned_mouse_area, styles};
-use crate::utils::{CropSelection, format_duration_mmss};
+use crate::utils::{CropSelection, format_duration_mmss, format_duration_human_readable};
 
 const COMMAND_PREVIEW_FONT_SIZE: f32 = 12.0;
 
@@ -60,7 +60,7 @@ impl std::fmt::Display for ResolutionOption {
 impl Editor {
     pub fn view(&self) -> Element<'_, Message> {
         let content: Element<'_, Message> = column![
-            editor_header(&self.video_path),
+            editor_header(self),
             frame_display(
                 self.frame_allocation.as_ref(),
                 self.crop_selection,
@@ -120,7 +120,23 @@ fn playback_button(icon: &'static [u8], message: Message) -> Element<'static, Me
     .into()
 }
 
-fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
+fn editor_header(state: &Editor) -> Element<'_, Message> {
+    let video_path = &state.video_path;
+    let file_name = video_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Unknown");
+
+    let metadata = if state.duration > 0.0 {
+        format!(
+            "  ·  {}  ·  {:.1} MB",
+            format_duration_human_readable(state.duration),
+            state.video_file_size_mb
+        )
+    } else {
+        format!("  ·  {:.1} MB", state.video_file_size_mb)
+    };
+
     row![
         button(square_svg(crate::icons::ARROW_SVG, 22))
             .on_press(Message::GoBack)
@@ -130,13 +146,10 @@ fn editor_header(video_path: &std::path::Path) -> Element<'_, Message> {
             .on_press(Message::OpenParentDir(video_path.to_path_buf()))
             .padding(10)
             .style(styles::rounded_icon_button),
-        text(
-            video_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Unknown")
-        )
-        .size(20)
+        rich_text::<(), Message, _, _>(vec![
+            span(file_name).size(20).color(app_colors::TEXT),
+            span(metadata).size(16).color(app_colors::TEXT_SECONDARY),
+        ])
     ]
     .spacing(10)
     .padding(10)
@@ -405,9 +418,7 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
             .size(12)
             .line_height(LineHeight::Absolute(20.0.into())),
         space::horizontal().width(4),
-        text(format!("MB (source: {:.1} MB)", state.video_file_size_mb))
-            .size(12)
-            .color(app_colors::TEXT),
+        text("MB").size(12).color(app_colors::TEXT),
     ]
     .align_y(Alignment::Center)
     .spacing(0)
