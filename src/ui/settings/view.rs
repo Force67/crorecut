@@ -2,7 +2,7 @@ use iced::widget::{
     button, column, container, iced as iced_logo, image, mouse_area, opaque, pin, rich_text, row,
     space, span, stack, text, text_input,
 };
-use iced::{Alignment, Background, Color, Element, Font, Length};
+use iced::{Alignment, Background, Color, Font, Length, Widget};
 
 use super::{Message, Section, Settings};
 use crate::ui::color as app_colors;
@@ -18,7 +18,7 @@ const SIDEBAR_ROW_SPAN: f32 = SIDEBAR_BUTTON_HEIGHT + SIDEBAR_BUTTON_SPACING;
 const INDICATOR_Y_OFFSET: f32 = (SIDEBAR_BUTTON_HEIGHT - INDICATOR_HEIGHT) / 2.0;
 
 impl Settings {
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self) -> impl Widget<Message> + '_ {
         let sidebar_buttons = column![
             sidebar_button("General", Section::General),
             sidebar_button("About", Section::About),
@@ -41,8 +41,8 @@ impl Settings {
         });
 
         let content = match self.active_section {
-            Section::General => self.general_view(),
-            Section::About => self.about_view(),
+            Section::General => self.general_view().boxed(),
+            Section::About => self.about_view().boxed(),
         };
 
         let content = container(content)
@@ -62,10 +62,9 @@ impl Settings {
                 ..Default::default()
             })
             .padding(2)
-            .into()
     }
 
-    fn general_view(&self) -> Element<'_, Message> {
+    fn general_view(&self) -> impl Widget<Message> + '_ {
         column![
             settings_input(
                 "Default directory",
@@ -82,10 +81,10 @@ impl Settings {
         ]
         .spacing(18)
         .width(Length::Fill)
-        .into()
     }
-    fn about_view(&self) -> Element<'_, Message> {
-        let title = rich_text::<(), Message, _, _>(vec![
+
+    fn about_view(&self) -> impl Widget<Message> + '_ {
+        let title = rich_text::<(), Message, _>(vec![
             span("Crorecut").size(16).color(app_colors::TEXT),
             span(format!(" v{}", env!("CARGO_PKG_VERSION")))
                 .size(14)
@@ -119,7 +118,6 @@ impl Settings {
         .width(Length::Fill)
         .height(Length::Fill)
         .align_x(Alignment::Start)
-        .into()
     }
 
     fn indicator_y(&self) -> f32 {
@@ -128,9 +126,9 @@ impl Settings {
 }
 
 pub fn modal_overlay<'a, Message>(
-    content: impl Into<Element<'a, Message>>,
+    content: impl Widget<Message> + 'a,
     on_blur: Message,
-) -> Element<'a, Message>
+) -> impl Widget<Message> + 'a
 where
     Message: Clone + 'a,
 {
@@ -148,15 +146,15 @@ where
     )
 }
 
-fn sidebar_button(label: &str, section: Section) -> Element<'_, Message> {
-    let button: Element<'_, Message> = crorecut_button(
+fn sidebar_button(label: &str, section: Section) -> impl Widget<Message> + '_ {
+    let button = crorecut_button(
         None,
         label.to_string(),
         None,
         Some(Message::SelectSection(section)),
     )
     .width(Length::Fill)
-    .into();
+    .into_widget();
 
     row![
         space().width(INDICATOR_WIDTH),
@@ -166,10 +164,9 @@ fn sidebar_button(label: &str, section: Section) -> Element<'_, Message> {
     .width(Length::Fill)
     .align_y(Alignment::Center)
     .height(SIDEBAR_BUTTON_HEIGHT)
-    .into()
 }
 
-fn sidebar_indicator() -> Element<'static, Message> {
+fn sidebar_indicator() -> impl Widget<Message> {
     container("")
         .width(INDICATOR_WIDTH)
         .height(INDICATOR_HEIGHT)
@@ -177,7 +174,6 @@ fn sidebar_indicator() -> Element<'static, Message> {
             background: Some(Background::Color(app_colors::LIGHT_GRAY)),
             ..Default::default()
         })
-        .into()
 }
 
 fn settings_input<'a>(
@@ -185,7 +181,7 @@ fn settings_input<'a>(
     placeholder: &'a str,
     value: &'a str,
     on_input: impl Fn(String) -> Message + 'a,
-) -> Element<'a, Message> {
+) -> impl Widget<Message> + 'a {
     column![
         text(label).size(13).color(app_colors::TEXT_SECONDARY),
         text_input(placeholder, value)
@@ -197,5 +193,4 @@ fn settings_input<'a>(
     .spacing(6)
     .align_x(Alignment::Start)
     .width(Length::Fill)
-    .into()
 }

@@ -1,5 +1,5 @@
 use iced::widget::{container, mouse_area, row, space, stack, text};
-use iced::{Alignment, Background, Border, Element, Length, mouse};
+use iced::{Alignment, Background, Border, Length, Widget, mouse};
 
 use super::color as app_colors;
 
@@ -25,7 +25,7 @@ fn inner_style(_theme: &iced::Theme) -> container::Style {
     }
 }
 
-fn checkbox_box<'a, Message>(is_checked: bool) -> Element<'a, Message>
+fn checkbox_box<'a, Message>(is_checked: bool) -> impl Widget<Message> + 'a
 where
     Message: Clone + 'a,
 {
@@ -34,31 +34,27 @@ where
         .height(Length::Fixed(CHECKBOX_SIZE))
         .style(outer_style);
 
-    if !is_checked {
-        return outer.into();
-    }
+    let inner = is_checked.then(|| {
+        container(
+            container(space::Space::new())
+                .width(Length::Fixed(CHECKBOX_INNER_SIZE))
+                .height(Length::Fixed(CHECKBOX_INNER_SIZE))
+                .style(inner_style),
+        )
+        .width(Length::Fixed(CHECKBOX_SIZE))
+        .height(Length::Fixed(CHECKBOX_SIZE))
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+    });
 
-    let inner = container(space::Space::new())
-        .width(Length::Fixed(CHECKBOX_INNER_SIZE))
-        .height(Length::Fixed(CHECKBOX_INNER_SIZE))
-        .style(inner_style);
-
-    stack![
-        outer,
-        container(inner)
-            .width(Length::Fixed(CHECKBOX_SIZE))
-            .height(Length::Fixed(CHECKBOX_SIZE))
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-    ]
-    .into()
+    stack![outer, inner]
 }
 
 pub fn crorecut_checkbox<'a, Message>(
     is_checked: bool,
     label: impl Into<String>,
     on_toggle: Message,
-) -> Element<'a, Message>
+) -> impl Widget<Message> + 'a
 where
     Message: Clone + 'a,
 {
@@ -72,5 +68,4 @@ where
     )
     .on_press(on_toggle)
     .interaction(mouse::Interaction::Pointer)
-    .into()
 }

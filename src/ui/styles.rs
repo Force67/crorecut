@@ -62,7 +62,6 @@ pub(crate) fn text_input(
             width: 1.0,
             radius: 0.0.into(),
         },
-        icon: app_colors::TEXT_SECONDARY,
         placeholder: app_colors::TEXT_SECONDARY,
         value: app_colors::TEXT,
         selection: app_colors::CONTROL_ACCENT,

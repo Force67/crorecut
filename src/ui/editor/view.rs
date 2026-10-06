@@ -3,7 +3,7 @@ use iced::widget::{
     button, canvas, column, container, image, mouse_area, pick_list, pin, rich_text, row, space,
     span, stack, svg, text, text_input,
 };
-use iced::{Alignment, Element, Font, Length};
+use iced::{Alignment, Element, Font, Length, Widget};
 
 use super::{
     Allocation, Editor, Message, RenderStatus, Resolution, SelectionCanvas, trim_timeline,
@@ -58,8 +58,8 @@ impl std::fmt::Display for ResolutionOption {
 }
 
 impl Editor {
-    pub fn view(&self) -> Element<'_, Message> {
-        let content: Element<'_, Message> = column![
+    pub fn view(&self) -> impl Widget<Message> + '_ {
+        let content = column![
             editor_header(self),
             frame_display(
                 self.frame_allocation.as_ref(),
@@ -84,17 +84,15 @@ impl Editor {
             render_params_section(self),
         ]
         .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
+        .height(Length::Fill);
 
-        stack![content, toast_layer(self.copy_toast())]
+        stack![content, self.copy_toast().map(toast_layer)]
             .width(Length::Fill)
             .height(Length::Fill)
-            .into()
     }
 }
 
-fn link_button(label: &str, message: Message) -> iced::widget::Button<'_, Message> {
+fn link_button(label: &str, message: Message) -> impl Widget<Message> + '_ {
     button(text(label).size(13))
         .on_press(message)
         .style(styles::text_link_button)
@@ -105,7 +103,7 @@ fn square_svg(data: &'static [u8], size: u32) -> iced::widget::Svg<'static> {
     svg(svg::Handle::from_memory(data)).width(size).height(size)
 }
 
-fn playback_button(icon: &'static [u8], message: Message) -> Element<'static, Message> {
+fn playback_button(icon: &'static [u8], message: Message) -> impl Widget<Message> {
     button(stack![
         container(square_svg(icon, 24))
             .center_x(Length::Fill)
@@ -117,10 +115,9 @@ fn playback_button(icon: &'static [u8], message: Message) -> Element<'static, Me
     .height(Length::Fixed(36.0))
     .padding(2)
     .style(styles::square_icon_button)
-    .into()
 }
 
-fn editor_header(state: &Editor) -> Element<'_, Message> {
+fn editor_header(state: &Editor) -> impl Widget<Message> + '_ {
     let video_path = &state.video_path;
     let file_name = video_path
         .file_name()
@@ -146,7 +143,7 @@ fn editor_header(state: &Editor) -> Element<'_, Message> {
             .on_press(Message::OpenParentDir(video_path.to_path_buf()))
             .padding(10)
             .style(styles::rounded_icon_button),
-        rich_text::<(), Message, _, _>(vec![
+        rich_text::<(), Message, _>(vec![
             span(file_name).size(20).color(app_colors::TEXT),
             span(metadata).size(16).color(app_colors::TEXT_SECONDARY),
         ])
@@ -154,7 +151,6 @@ fn editor_header(state: &Editor) -> Element<'_, Message> {
     .spacing(10)
     .padding(10)
     .align_y(Alignment::Center)
-    .into()
 }
 
 fn frame_display<'a>(
@@ -163,14 +159,9 @@ fn frame_display<'a>(
     preview_width: f32,
     preview_height: f32,
     is_crop_interaction_active: bool,
-) -> iced::widget::Container<'a, Message> {
-    let style = |_theme: &iced::Theme| container::Style {
-        background: Some(iced::Background::Color(iced::Color::BLACK)),
-        ..Default::default()
-    };
-
-    if let Some(allocation) = frame_allocation {
-        container(stack![
+) -> impl Widget<Message> + 'a {
+    let content = if let Some(allocation) = frame_allocation {
+        stack![
             image(allocation.handle().clone())
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -183,24 +174,21 @@ fn frame_display<'a>(
             })
             .width(Length::Fill)
             .height(Length::Fill)
-        ])
-        .width(Length::Fill)
-        .height(Length::FillPortion(4))
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .style(style)
+        ]
+        .boxed()
     } else {
-        container(
-            text("Loading video...")
-                .size(20)
-                .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
-        )
-        .width(Length::Fill)
-        .height(Length::FillPortion(4))
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .style(style)
-    }
+        text("Loading video...")
+            .size(20)
+            .color(iced::Color::from_rgb(0.6, 0.6, 0.6))
+            .boxed()
+    };
+
+    container(content)
+        .center(Length::Fill)
+        .style(|_theme| container::Style {
+            background: Some(iced::Background::Color(iced::Color::BLACK)),
+            ..Default::default()
+        })
 }
 
 fn timeline(
@@ -209,7 +197,7 @@ fn timeline(
     trim_start: f64,
     trim_end: f64,
     is_streaming: bool,
-) -> Element<'static, Message> {
+) -> impl Widget<Message> {
     let (icon, msg) = if is_streaming {
         (crate::icons::PAUSE_SVG, Message::StopPlayback)
     } else {
@@ -239,12 +227,11 @@ fn timeline(
     .padding([12, 20])
     .width(Length::Fill)
     .align_y(Alignment::Center)
-    .into()
 }
 
 fn render_status_row<'a>(status: &'a RenderStatus) -> Element<'a, Message> {
     match status {
-        RenderStatus::Idle | RenderStatus::Rendering => row![].into(),
+        RenderStatus::Idle | RenderStatus::Rendering => space().boxed(),
         RenderStatus::Completed(output_path) => row![
             text("Done! (").size(13).color(app_colors::FIR_GREEN),
             link_button("Open", Message::OpenFile(output_path.clone())),
@@ -254,17 +241,17 @@ fn render_status_row<'a>(status: &'a RenderStatus) -> Element<'a, Message> {
             link_button("Delete", Message::DeleteFile(output_path.clone())),
             text(")").size(13).color(app_colors::FIR_GREEN),
         ]
-        .into(),
+        .boxed(),
         RenderStatus::Failed(err) => row![
             text(format!("Failed: {}", err))
                 .size(13)
                 .color(iced::Color::from_rgb(1.0, 0.4, 0.4))
         ]
-        .into(),
+        .boxed(),
     }
 }
 
-fn render_params_section(state: &Editor) -> Element<'_, Message> {
+fn render_params_section(state: &Editor) -> impl Widget<Message> + '_ {
     let will_compress = !state.target_size_mb.is_empty();
     let render_label = match (&state.render_status, will_compress) {
         (RenderStatus::Rendering, true) => "Rendering and compressing…",
@@ -273,15 +260,15 @@ fn render_params_section(state: &Editor) -> Element<'_, Message> {
         (_, false) => "Render the video…",
     };
 
-    let copy_button: Element<'_, Message> = crorecut_button(
+    let copy_button = crorecut_button(
         Some(crate::icons::COPY_SVG),
         "Copy Command".into(),
         None,
         Some(Message::CopyCommand),
     )
-    .into();
+    .into_widget();
 
-    let render_button: Element<'_, Message> = crorecut_button(
+    let render_button = crorecut_button(
         Some(crate::icons::FFMPEG_SVG),
         render_label.into(),
         state.render_progress.as_ref().map(|p| {
@@ -301,7 +288,7 @@ fn render_params_section(state: &Editor) -> Element<'_, Message> {
             _ => Some(Message::RunCommand),
         },
     )
-    .into();
+    .into_widget();
 
     row![
         command_header(state),
@@ -313,17 +300,12 @@ fn render_params_section(state: &Editor) -> Element<'_, Message> {
     .spacing(12)
     .padding([10, 20])
     .width(Length::Fill)
-    .into()
 }
 
-fn toast_layer(toast: Option<&super::CopyToast>) -> Element<'static, Message> {
+fn toast_layer(toast: &super::CopyToast) -> impl Widget<Message> {
     const BASE_OFFSET_Y: f32 = 36.0;
     const OFFSET_X: f32 = 12.0;
     const TRAVEL_Y: f32 = 24.0;
-
-    let Some(toast) = toast else {
-        return space().width(Length::Fill).height(Length::Fill).into();
-    };
 
     let position = toast.position;
     let progress = toast.progress();
@@ -331,13 +313,10 @@ fn toast_layer(toast: Option<&super::CopyToast>) -> Element<'static, Message> {
     let alpha = 1.0 - progress;
     let y = (position.y - BASE_OFFSET_Y - TRAVEL_Y * eased).max(0.0);
 
-    pin(copy_toast_widget(alpha))
-        .x(position.x + OFFSET_X)
-        .y(y)
-        .into()
+    pin(copy_toast_widget(alpha)).x(position.x + OFFSET_X).y(y)
 }
 
-fn copy_toast_widget(alpha: f32) -> Element<'static, Message> {
+fn copy_toast_widget(alpha: f32) -> impl Widget<Message> {
     container(
         text("Copied!")
             .size(13)
@@ -355,10 +334,9 @@ fn copy_toast_widget(alpha: f32) -> Element<'static, Message> {
         },
         ..Default::default()
     })
-    .into()
 }
 
-fn command_preview_field(state: &Editor) -> Element<'_, Message> {
+fn command_preview_field(state: &Editor) -> impl Widget<Message> + '_ {
     mouse_area(
         container(stack![
             container(command_preview_text(state))
@@ -380,10 +358,9 @@ fn command_preview_field(state: &Editor) -> Element<'_, Message> {
     )
     .on_enter(Message::CommandPreviewHovered(true))
     .on_exit(Message::CommandPreviewHovered(false))
-    .into()
 }
 
-fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
+fn command_header(state: &Editor) -> impl Widget<Message> + '_ {
     let resolution_options = ResolutionOption::options_for(state.video_height);
     let selected = ResolutionOption::from_resolution(state.target_resolution);
 
@@ -425,11 +402,12 @@ fn command_header(state: &Editor) -> iced::widget::Row<'_, Message> {
 
 fn command_preview_text(state: &Editor) -> iced::widget::text::Rich<'_, (), Message> {
     let build_rich_text = |spans| -> iced::widget::text::Rich<'_, (), Message> {
-        rich_text::<(), Message, _, _>(spans)
+        rich_text::<(), Message, _>(spans)
             .font(Font::MONOSPACE)
             .wrapping(iced::widget::text::Wrapping::WordOrGlyph)
             .line_height(LineHeight::Relative(1.5))
             .height(Length::Fixed(54.0))
+            .selectable(true)
     };
 
     if state.is_command_hovered {

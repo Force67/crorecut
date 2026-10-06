@@ -232,8 +232,14 @@ impl Grid {
             }
 
             Message::ScrollChanged(viewport) => {
-                self.scroll_offset = viewport.relative_offset();
-                self.context_menu = None;
+                let offset = viewport.relative_offset();
+
+                // Smooth scrolling reports the same destination on every animation frame
+                if offset != self.scroll_offset {
+                    self.scroll_offset = offset;
+                    self.context_menu = None;
+                }
+
                 Task::none()
             }
 

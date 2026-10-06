@@ -1,7 +1,7 @@
 use iced::widget::{
-    button, column, container, grid, image, mouse_area, row, scrollable, space, stack, text,
+    button, column, container, grid, image, mouse_area, row, scrollable, stack, text,
 };
-use iced::{Alignment, Border, Element, Length};
+use iced::{Alignment, Border, Length, Widget};
 use std::path::Path;
 
 use super::{Grid, GridContextMenu, Message, ScanStatus, grid_scrollable_id};
@@ -10,23 +10,23 @@ use crate::ui::{ContextMenuItem, context_menu_overlay, crorecut_button};
 use crate::utils::format_duration_mmss;
 
 impl Grid {
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self) -> impl Widget<Message> + '_ {
         match &self.scan_status {
             ScanStatus::NotStarted | ScanStatus::Scanning => {
                 container(text("Scanning videos...").size(20))
                     .center_x(Length::Fill)
                     .center_y(Length::Fill)
-                    .into()
+                    .boxed()
             }
 
             ScanStatus::Complete => {
-                let main_content: Element<'_, Message> = if self.videos.is_empty() {
-                    empty_state()
+                let main_content = if self.videos.is_empty() {
+                    empty_state().boxed()
                 } else {
-                    videos_grid(&self.videos, self.context_menu.as_ref())
+                    videos_grid(&self.videos, self.context_menu.as_ref()).boxed()
                 };
 
-                column![top_section(&self.videos_directory), main_content].into()
+                column![top_section(&self.videos_directory), main_content].boxed()
             }
 
             ScanStatus::Error(error_msg) => container(
@@ -38,12 +38,12 @@ impl Grid {
             )
             .center_x(Length::Fill)
             .center_y(Length::Fill)
-            .into(),
+            .boxed(),
         }
     }
 }
 
-fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
+fn video_grid_item(video: &VideoItem) -> impl Widget<Message> + '_ {
     let thumbnail_content = match &video.thumbnail_state {
         ThumbnailState::Pending => container(text("...").size(40))
             .center_x(Length::Fill)
@@ -55,7 +55,8 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                     0.2, 0.2, 0.2,
                 ))),
                 ..Default::default()
-            }),
+            })
+            .boxed(),
 
         ThumbnailState::Generating => container(text("...").size(40))
             .center_x(Length::Fill)
@@ -67,7 +68,8 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                     0.25, 0.25, 0.25,
                 ))),
                 ..Default::default()
-            }),
+            })
+            .boxed(),
 
         ThumbnailState::Ready(handle) => {
             let thumbnail_image = image(handle.clone())
@@ -76,7 +78,7 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                 .content_fit(iced::ContentFit::Cover);
 
             // Duration badge overlay (bottom-right corner)
-            let duration_badge: Element<'_, Message> = if let Some(duration) = video.duration {
+            let duration_badge = video.duration.map(|duration| {
                 container(
                     container(
                         text(format_duration_mmss(duration))
@@ -100,14 +102,12 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                 .align_x(Alignment::End)
                 .align_y(Alignment::End)
                 .padding(4)
-                .into()
-            } else {
-                space().width(Length::Fill).height(Length::Fill).into()
-            };
+            });
 
             container(stack![thumbnail_image, duration_badge])
                 .width(Length::Fill)
                 .height(Length::Fill)
+                .boxed()
         }
 
         ThumbnailState::Failed(error) => container(
@@ -124,7 +124,8 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
                 0.3, 0.1, 0.1,
             ))),
             ..Default::default()
-        }),
+        })
+        .boxed(),
     };
 
     let filename_label = text(&video.metadata.file_name)
@@ -173,27 +174,25 @@ fn video_grid_item(video: &VideoItem) -> Element<'_, Message> {
         });
 
     // Wrap in mouse_area for right-click context menu
-    mouse_area(item_button)
-        .on_right_press(Message::ShowContextMenu(video_path_for_context))
-        .into()
+    mouse_area(item_button).on_right_press(Message::ShowContextMenu(video_path_for_context))
 }
 
-fn top_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
-    let refresh_button: Element<'_, Message> = crorecut_button(
+fn top_section<'a>(videos_dir: &Path) -> impl Widget<Message> + 'a {
+    let refresh_button = crorecut_button(
         Some(crate::icons::REFRESH_SVG),
         "Refresh videos".into(),
         Some(videos_dir.display().to_string()),
         Some(Message::ScanVideosDirectory),
     )
-    .into();
+    .into_widget();
 
-    let settings_button: Element<'_, Message> = crorecut_button(
+    let settings_button = crorecut_button(
         Some(crate::icons::GEAR_SVG),
         "Settings".into(),
         Some("Directories, FFmpeg, …".into()),
         Some(Message::ShowSettings),
     )
-    .into();
+    .into_widget();
 
     container(
         row![refresh_button, settings_button]
@@ -202,10 +201,9 @@ fn top_section<'a>(videos_dir: &Path) -> Element<'a, Message> {
     )
     .padding([12, 20])
     .center_x(Length::Fill)
-    .into()
 }
 
-fn empty_state<'a>() -> Element<'a, Message> {
+fn empty_state<'a>() -> impl Widget<Message> + 'a {
     container(
         column![
             text("No videos found").size(20),
@@ -216,13 +214,12 @@ fn empty_state<'a>() -> Element<'a, Message> {
     )
     .center_x(Length::Fill)
     .center_y(Length::Fill)
-    .into()
 }
 
 fn videos_grid<'a>(
     videos: &'a [VideoItem],
     context_menu: Option<&'a GridContextMenu>,
-) -> Element<'a, Message> {
+) -> impl Widget<Message> + 'a {
     let video_grid = grid::Grid::with_children(videos.iter().map(video_grid_item))
         .columns(3)
         .spacing(12)
@@ -230,12 +227,12 @@ fn videos_grid<'a>(
 
     let grid_content = scrollable(container(video_grid).padding(20).width(Length::Fill))
         .id(grid_scrollable_id())
-        .on_scroll(Message::ScrollChanged);
+        .on_scroll(|scroll| Message::ScrollChanged(scroll.destination()));
 
     // Wrap in mouse_area for cursor tracking
     let tracked_grid = mouse_area(grid_content).on_move(Message::CursorMoved);
 
-    let menu_overlay: Option<Element<'a, Message>> = context_menu.map(|menu| {
+    let menu_overlay = context_menu.map(|menu| {
         let items = if menu.confirming_delete {
             context_menu_delete_confirm()
         } else {
@@ -245,7 +242,7 @@ fn videos_grid<'a>(
     });
 
     // Stack to keep widget tree structure consistent
-    stack![tracked_grid, menu_overlay].into()
+    stack![tracked_grid, menu_overlay]
 }
 
 // Context menu items

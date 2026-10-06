@@ -1,7 +1,7 @@
 //! Styled ripple button with decorative corner dots and an optional icon
 
 use iced::widget::{button, column, container, row, stack, svg, text};
-use iced::{Alignment, Color, Element, Length};
+use iced::{Alignment, Color, Length, Widget};
 
 use super::color as app_colors;
 use super::{corner_dots, ripple};
@@ -51,58 +51,45 @@ pub fn crorecut_button<Message>(
         label,
         sublabel,
         on_press,
-        width: Length::Shrink,
+        width: Length::Fit,
     }
 }
 
-impl<'a, Message> From<CrorecutButton<Message>> for Element<'a, Message>
-where
-    Message: Clone + 'a,
-{
-    fn from(button_config: CrorecutButton<Message>) -> Self {
-        let label_content: Element<'_, Message> = match button_config.sublabel {
-            Some(sub) => column![
-                text(button_config.label).color(app_colors::TEXT),
-                text(sub).size(13).color(app_colors::TEXT_SECONDARY)
-            ]
-            .into(),
-            None => text(button_config.label).color(app_colors::TEXT).into(),
-        };
+impl<Message> CrorecutButton<Message> {
+    pub fn into_widget<'a>(self) -> impl Widget<Message> + 'a
+    where
+        Message: Clone + 'a,
+    {
+        let icon = self.icon.map(|icon_data| {
+            svg(svg::Handle::from_memory(icon_data))
+                .width(28)
+                .height(28)
+        });
 
-        let content: Element<'_, Message> = match button_config.icon {
-            Some(icon_data) => {
-                let icon_svg = svg(svg::Handle::from_memory(icon_data))
-                    .width(28)
-                    .height(28);
-                row![icon_svg, label_content]
-                    .spacing(12)
-                    .align_y(Alignment::Center)
-                    .into()
-            }
-            None => label_content,
-        };
+        let label = column![
+            text(self.label).color(app_colors::TEXT),
+            self.sublabel
+                .map(|sub| text(sub).size(13).color(app_colors::TEXT_SECONDARY)),
+        ];
 
-        let width = button_config.width;
-        let enabled = button_config.on_press.is_some();
+        let content = row![icon, label].spacing(12).align_y(Alignment::Center);
 
-        let mut btn = button(stack![
+        let enabled = self.on_press.is_some();
+
+        let btn = button(stack![
             container(content)
-                .center_x(width)
-                .center_y(Length::Shrink)
+                .center_x(self.width)
+                .center_y(Length::Fit)
                 .padding([12, 16]), // [vertical, horizontal]
             corner_dots(),
         ])
-        .width(width)
+        .on_press_maybe(self.on_press)
+        .width(self.width)
         .style(button_style)
         .padding(2);
-
-        if let Some(msg) = button_config.on_press {
-            btn = btn.on_press(msg);
-        }
 
         ripple(btn)
             .ripple_color(app_colors::RIPPLE_ON_GRAY)
             .enabled(enabled)
-            .into()
     }
 }

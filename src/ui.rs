@@ -19,7 +19,7 @@ use crorecut_button::crorecut_button;
 use positioned_mouse_area::positioned_mouse_area;
 use ripple::ripple;
 
-pub(crate) fn corner_dots<'a, Message>() -> iced::widget::Container<'a, Message> {
+pub(crate) fn corner_dots<'a>() -> iced::widget::Container<'a, iced::widget::Svg<'a>> {
     let corner_dots = svg(svg::Handle::from_memory(crate::icons::CORNER_DOTS_SVG))
         .width(7)
         .height(7)

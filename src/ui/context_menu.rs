@@ -1,5 +1,5 @@
 use iced::widget::{button, column, container, mouse_area, opaque, pin, space, stack, text};
-use iced::{Border, Color, Element, Length, Point};
+use iced::{Border, Color, Length, Point, Widget};
 
 use super::color as app_colors;
 use super::ripple;
@@ -37,7 +37,7 @@ pub fn context_menu_overlay<'a, M: Clone + 'a>(
     position: Point,
     items: Vec<ContextMenuItem<M>>,
     on_dismiss: M,
-) -> Element<'a, M> {
+) -> impl Widget<M> + 'a {
     let menu = context_menu_widget(items);
 
     // Overlay: transparent backdrop (for click-outside dismiss) + positioned menu
@@ -47,27 +47,22 @@ pub fn context_menu_overlay<'a, M: Clone + 'a>(
         // Menu pinned at cursor position
         pin(menu).x(position.x).y(position.y),
     ]
-    .into()
 }
 
-fn context_menu_widget<'a, M: Clone + 'a>(items: Vec<ContextMenuItem<M>>) -> Element<'a, M> {
-    let menu_items: Vec<Element<'a, M>> = items
-        .into_iter()
-        .map(|item| {
-            let text_color = item.color;
-            let enabled = item.message.is_some();
-            ripple(
-                button(text(item.label).size(13))
-                    .on_press_maybe(item.message)
-                    .width(Length::Fill)
-                    .padding([8, 16])
-                    .style(move |theme, status| menu_item_style(theme, status, text_color)),
-            )
-            .ripple_color(app_colors::RIPPLE_ON_GRAY)
-            .enabled(enabled)
-            .into()
-        })
-        .collect();
+fn context_menu_widget<'a, M: Clone + 'a>(items: Vec<ContextMenuItem<M>>) -> impl Widget<M> + 'a {
+    let menu_items = items.into_iter().map(|item| {
+        let text_color = item.color;
+        let enabled = item.message.is_some();
+        ripple(
+            button(text(item.label).size(13))
+                .on_press_maybe(item.message)
+                .width(Length::Fill)
+                .padding([8, 16])
+                .style(move |theme, status| menu_item_style(theme, status, text_color)),
+        )
+        .ripple_color(app_colors::RIPPLE_ON_GRAY)
+        .enabled(enabled)
+    });
 
     opaque(
         container(column(menu_items).width(Length::Fixed(160.0)))

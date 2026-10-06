@@ -1,6 +1,6 @@
 use iced::mouse;
 use iced::widget::canvas::{self, Action, Frame, LineCap, Path};
-use iced::{Element, Event, Length, Point, Radians, Rectangle, Size};
+use iced::{Event, Length, Point, Radians, Rectangle, Size, Widget};
 
 use super::Message;
 use crate::ui::color as app_colors;
@@ -278,7 +278,7 @@ pub fn trim_timeline(
     start: f64,
     end: f64,
     playhead: f64,
-) -> Element<'static, Message> {
+) -> impl Widget<Message> {
     iced::widget::canvas(TrimTimeline {
         min,
         max,
@@ -288,5 +288,4 @@ pub fn trim_timeline(
     })
     .width(Length::Fill)
     .height(Length::Fixed(TIMELINE_HEIGHT))
-    .into()
 }

@@ -4,7 +4,7 @@ use iced::advanced::layout::{self, Layout};
 use iced::advanced::renderer;
 use iced::advanced::widget::{self, Operation, Tree};
 use iced::advanced::{Shell, Widget};
-use iced::{Color, Element, Event, Length, Point, Rectangle, Size, Vector, mouse};
+use iced::{Color, Event, Length, Point, Rectangle, Size, Vector, mouse};
 use std::time::Instant;
 
 const RIPPLE_DURATION: f32 = 0.5;
@@ -18,17 +18,17 @@ pub enum RippleShape {
     // TODO: Rounded (not supported due to `iced` limitation at the moment)
 }
 
-pub struct Ripple<'a, Message, Theme = iced::Theme, Renderer = iced::Renderer> {
-    content: Element<'a, Message, Theme, Renderer>,
+pub struct Ripple<W> {
+    content: W,
     ripple_color: Color,
     shape: RippleShape,
     enabled: bool,
 }
 
-impl<'a, Message, Theme, Renderer> Ripple<'a, Message, Theme, Renderer> {
-    pub fn new(content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
+impl<W> Ripple<W> {
+    pub fn new(content: W) -> Self {
         Self {
-            content: content.into(),
+            content,
             ripple_color: Color::WHITE,
             shape: RippleShape::default(),
             enabled: true,
@@ -54,9 +54,7 @@ impl<'a, Message, Theme, Renderer> Ripple<'a, Message, Theme, Renderer> {
     }
 }
 
-pub fn ripple<'a, Message, Theme, Renderer>(
-    content: impl Into<Element<'a, Message, Theme, Renderer>>,
-) -> Ripple<'a, Message, Theme, Renderer> {
+pub fn ripple<W>(content: W) -> Ripple<W> {
     Ripple::new(content)
 }
 
@@ -100,10 +98,12 @@ struct RippleState {
     ripples: Vec<RippleAnimation>,
 }
 
-impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
-    for Ripple<'a, Message, Theme, Renderer>
+impl<W> widget::Meta for Ripple<W> {}
+
+impl<Message, W, Theme, Renderer> Widget<Message, Theme, Renderer> for Ripple<W>
 where
     Renderer: renderer::Renderer,
+    W: Widget<Message, Theme, Renderer>,
 {
     fn tag(&self) -> widget::tree::Tag {
         widget::tree::Tag::of::<RippleState>()
@@ -113,46 +113,37 @@ where
         widget::tree::State::new(RippleState::default())
     }
 
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.content)]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(std::slice::from_ref(&self.content));
+    fn diff(&mut self, tree: &mut Tree) {
+        tree.diff_children(std::slice::from_mut(&mut self.content));
     }
 
     fn size(&self) -> Size<Length> {
-        self.content.as_widget().size()
+        self.content.size()
     }
 
-    fn layout(
-        &mut self,
-        tree: &mut Tree,
-        renderer: &Renderer,
-        limits: &layout::Limits,
-    ) -> layout::Node {
-        self.content
-            .as_widget_mut()
-            .layout(&mut tree.children[0], renderer, limits)
+    fn layout(&mut self, tree: &mut Tree, renderer: &Renderer, limits: &layout::Limits) {
+        self.content.layout(&mut tree.children[0], renderer, limits);
+
+        tree.size = tree.children[0].size;
     }
 
     fn operate(
         &mut self,
         tree: &mut Tree,
-        layout: Layout<'_>,
+        layout: Layout,
+        viewport: &Rectangle,
         renderer: &Renderer,
         operation: &mut dyn Operation,
     ) {
         self.content
-            .as_widget_mut()
-            .operate(&mut tree.children[0], layout, renderer, operation);
+            .operate(&mut tree.children[0], layout, viewport, renderer, operation);
     }
 
     fn update(
         &mut self,
         tree: &mut Tree,
         event: &Event,
-        layout: Layout<'_>,
+        layout: Layout,
         cursor: mouse::Cursor,
         renderer: &Renderer,
         shell: &mut Shell<'_, Message>,
@@ -226,7 +217,7 @@ where
         }
 
         // Pass event to child widget
-        self.content.as_widget_mut().update(
+        self.content.update(
             &mut tree.children[0],
             event,
             layout,
@@ -240,18 +231,13 @@ where
     fn mouse_interaction(
         &self,
         tree: &Tree,
-        layout: Layout<'_>,
+        layout: Layout,
         cursor: mouse::Cursor,
         viewport: &Rectangle,
         renderer: &Renderer,
     ) -> mouse::Interaction {
-        self.content.as_widget().mouse_interaction(
-            &tree.children[0],
-            layout,
-            cursor,
-            viewport,
-            renderer,
-        )
+        self.content
+            .mouse_interaction(&tree.children[0], layout, cursor, viewport, renderer)
     }
 
     fn draw(
@@ -260,12 +246,12 @@ where
         renderer: &mut Renderer,
         theme: &Theme,
         style: &renderer::Style,
-        layout: Layout<'_>,
+        layout: Layout,
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
         // Draw child widget first
-        self.content.as_widget().draw(
+        self.content.draw(
             &tree.children[0],
             renderer,
             theme,
@@ -351,29 +337,19 @@ where
     fn overlay<'b>(
         &'b mut self,
         tree: &'b mut Tree,
-        layout: Layout<'b>,
+        layout: Layout,
         renderer: &Renderer,
         viewport: &Rectangle,
         translation: Vector,
-    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
-        self.content.as_widget_mut().overlay(
+        window: Size,
+    ) -> Vec<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
+        self.content.overlay(
             &mut tree.children[0],
             layout,
             renderer,
             viewport,
             translation,
+            window,
         )
-    }
-}
-
-impl<'a, Message, Theme, Renderer> From<Ripple<'a, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
-where
-    Message: 'a,
-    Theme: 'a,
-    Renderer: renderer::Renderer + 'a,
-{
-    fn from(ripple: Ripple<'a, Message, Theme, Renderer>) -> Self {
-        Self::new(ripple)
     }
 }

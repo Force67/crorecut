@@ -108,7 +108,7 @@ impl AudioPlayer {
 
         let stream = device
             .build_output_stream(
-                &config,
+                config,
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
                     let pulled = ring_buffer.pull_samples(data);
                     samples_played_clone.fetch_add(pulled as u64, Ordering::Release);

@@ -2,7 +2,7 @@ use crate::ui::{editor, grid, settings};
 use iced::event::{self, Event};
 use iced::keyboard::{self, key};
 use iced::widget::stack;
-use iced::{Element, Subscription, Task, theme};
+use iced::{Subscription, Task, Widget, theme};
 use std::path::PathBuf;
 
 /// Screen enum - Grid state is stored separately on Crorecut since it's the home screen
@@ -69,9 +69,10 @@ impl Crorecut {
                 self.screen = Screen::Grid;
 
                 if restore_scroll {
-                    iced::widget::operation::snap_to(
+                    iced::widget::operation::scrollable::snap_to(
                         grid::grid_scrollable_id(),
                         self.grid_state.scroll_offset(),
+                        iced::widget::operation::Animation::Instant,
                     )
                 } else {
                     Task::none()
@@ -130,20 +131,20 @@ impl Crorecut {
         }
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self) -> impl Widget<Message> + '_ {
         let content = match &self.screen {
-            Screen::Grid => self.grid_state.view().map(Message::Grid),
-            Screen::Editor(state) => state.view().map(Message::Editor),
+            Screen::Grid => self.grid_state.view().map(Message::Grid).boxed(),
+            Screen::Editor(state) => state.view().map(Message::Editor).boxed(),
         };
 
-        let settings_overlay: Option<Element<'_, Message>> = self.show_settings_modal.then(|| {
+        let settings_overlay = self.show_settings_modal.then(|| {
             settings::modal_overlay(
                 self.settings.view().map(Message::Settings),
                 Message::HideSettings,
             )
         });
 
-        stack![content, settings_overlay].into()
+        stack![content, settings_overlay]
     }
 
     pub fn style(&self, _theme: &iced::Theme) -> iced::theme::Style {

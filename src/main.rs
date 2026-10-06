@@ -34,7 +34,7 @@ fn main() -> iced::Result {
         .style(Crorecut::style)
         .subscription(Crorecut::subscription)
         .settings(iced::Settings {
-            default_font: iced::Font::new("Jost"),
+            font: iced::Font::new("Jost"),
             vsync: false,
             ..Default::default()
         })
