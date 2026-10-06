@@ -2,6 +2,7 @@ mod command_builder;
 mod dir_scanner;
 pub mod error;
 mod ffmpeg;
+mod ffmpeg_detection;
 pub mod frame_streaming;
 mod metadata;
 mod resolution;
@@ -15,5 +16,6 @@ pub use ffmpeg::{
     extract_first_frames_batch, extract_frame, get_video_stream_info, run_ffmpeg_cmd,
     run_two_pass_ffmpeg_cmd,
 };
+pub use ffmpeg_detection::{FfmpegAvailability, detect_ffmpeg};
 pub use metadata::VideoMetadata;
 pub use resolution::Resolution;

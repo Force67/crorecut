@@ -1,3 +1,4 @@
+use iced::widget::text::Span;
 use iced::widget::{
     button, column, container, iced as iced_logo, image, mouse_area, opaque, pin, rich_text, row,
     space, span, stack, text, text_input,
@@ -7,6 +8,7 @@ use iced::{Alignment, Background, Color, Font, Length, Widget};
 use super::{Message, Section, Settings};
 use crate::ui::color as app_colors;
 use crate::ui::{corner_dots, crorecut_button, styles};
+use crate::video::FfmpegAvailability;
 
 const SIDEBAR_WIDTH: f32 = 150.0;
 const SIDEBAR_BUTTON_HEIGHT: f32 = 48.0;
@@ -68,13 +70,15 @@ impl Settings {
         column![
             settings_input(
                 "Default directory",
+                None,
                 "Default videos directory",
                 &self.default_directory,
                 Message::DefaultDirectoryChanged,
             ),
             settings_input(
                 "FFmpeg path",
-                "(Leave empty to use FFmpeg from PATH)",
+                self.ffmpeg_availability.as_ref().map(ffmpeg_status),
+                "Leave empty to use FFmpeg from PATH",
                 &self.ffmpeg_path,
                 Message::FfmpegPathChanged,
             ),
@@ -176,17 +180,41 @@ fn sidebar_indicator() -> impl Widget<Message> {
         })
 }
 
+fn ffmpeg_status(availability: &FfmpegAvailability) -> Span<'static> {
+    match availability {
+        FfmpegAvailability::Detected { version } => {
+            span(format!("✓ detected (version {version})")).color(app_colors::FIR_GREEN)
+        }
+        FfmpegAvailability::Missing { ffmpeg, ffprobe } => {
+            let missing = match (ffmpeg, ffprobe) {
+                (true, false) => "ffmpeg ",
+                (false, true) => "ffprobe ",
+                _ => "",
+            };
+            span(format!("✗ {missing}not found in PATH")).color(app_colors::DANGER_RED)
+        }
+    }
+}
+
 fn settings_input<'a>(
     label: &'a str,
+    status: Option<Span<'a>>,
     placeholder: &'a str,
     value: &'a str,
     on_input: impl Fn(String) -> Message + 'a,
 ) -> impl Widget<Message> + 'a {
+    let mut label_spans = vec![span(label).color(app_colors::TEXT_SECONDARY)];
+    if let Some(status) = status {
+        label_spans.push(span(" · ").color(app_colors::TEXT_SECONDARY));
+        label_spans.push(status);
+    }
+
     column![
-        text(label).size(13).color(app_colors::TEXT_SECONDARY),
+        rich_text::<(), Message, _>(label_spans).size(14),
         text_input(placeholder, value)
             .on_input(on_input)
             .padding(8)
+            .font(Font::MONOSPACE)
             .style(styles::text_input)
             .width(Length::Fill),
     ]

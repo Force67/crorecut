@@ -38,11 +38,12 @@ impl Crorecut {
     pub fn new() -> (Self, Task<Message>) {
         let videos_dir = dirs::video_dir().unwrap_or_else(|| PathBuf::from("."));
         let grid_state = grid::Grid::new(videos_dir);
+        let (settings, settings_task) = settings::Settings::new();
 
         let app = Self {
             screen: Screen::Grid,
             grid_state,
-            settings: settings::Settings::new(),
+            settings,
             show_settings_modal: false,
         };
 
@@ -53,6 +54,7 @@ impl Crorecut {
             ),
             iced::font::load(crate::JOST_FONT).discard(),
             iced::font::load(crate::JOST_FONT_LIGHT).discard(),
+            settings_task.map(Message::Settings),
         ]);
         (app, initial_task)
     }

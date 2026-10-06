@@ -4,6 +4,8 @@ use iced::widget::image;
 use iced::{Subscription, Task, window};
 use std::time::{Duration, Instant};
 
+use crate::video::FfmpegAvailability;
+
 pub use view::modal_overlay;
 
 const INDICATOR_ANIMATION_DURATION: Duration = Duration::from_millis(180);
@@ -55,6 +57,8 @@ pub struct Settings {
     indicator_animation: Option<IndicatorAnimation>,
     default_directory: String,
     ffmpeg_path: String,
+    /// `None` while detection is still running
+    ffmpeg_availability: Option<FfmpegAvailability>,
     window_icon: image::Handle,
 }
 
@@ -64,20 +68,26 @@ pub enum Message {
     IndicatorFrame,
     DefaultDirectoryChanged(String),
     FfmpegPathChanged(String),
+    FfmpegDetected(FfmpegAvailability),
     OpenGithub,
 }
 
 impl Settings {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> (Self, Task<Message>) {
+        let settings = Self {
             active_section: Section::default(),
             indicator_animation: None,
             default_directory: dirs::video_dir()
                 .map(|path| path.display().to_string())
                 .unwrap_or_default(),
             ffmpeg_path: String::new(),
+            ffmpeg_availability: None,
             window_icon: image::Handle::from_bytes(crate::icons::WINDOW_ICON),
-        }
+        };
+
+        let detect_task = Task::perform(crate::video::detect_ffmpeg(), Message::FfmpegDetected);
+
+        (settings, detect_task)
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -114,6 +124,9 @@ impl Settings {
             }
             Message::FfmpegPathChanged(value) => {
                 self.ffmpeg_path = value;
+            }
+            Message::FfmpegDetected(availability) => {
+                self.ffmpeg_availability = Some(availability);
             }
             Message::OpenGithub => {
                 if let Err(error) = open::that_detached("https://github.com/miredirex/crorecut") {
