@@ -107,6 +107,10 @@ When exploring unfamiliar repositories, follow this two-step process:
 
 The API returns JSON with file/directory metadata (name, type, size). Use it to navigate, then switch to raw URLs for actual source code.
 
+## iced Mental Model
+
+iced is not immediate mode: there is no per-frame cost. Do expensive work in `update()` and keep `view()` cheap and declarative.
+
 ## Architecture Patterns
 
 ### iced Application Structure
@@ -183,6 +187,12 @@ This is a personal pet project, so **keep error handling pragmatic and minimal**
 - Use `Result` where it makes sense, but don't over-engineer
 - `unwrap()` and `expect()` are fine when appropriate
 - Focus on user experience over exhaustive error recovery
+
+### If the `iced` skill is loaded
+
+Crorecut is a personal hobby project, so it relaxes two of the skill's rules:
+- **`unwrap()` is allowed**, including in `update()`/`view()`, despite "no `unwrap()` in production code"
+- **Doc comments are not required on every public item**: keep them minimal and add them where they help
 
 ## Platform Notes
 
