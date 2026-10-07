@@ -5,7 +5,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Background, Color, Font, Length, Widget};
 
-use super::{Message, Section, Settings};
+use super::{ABOUT_ICON_SIZE, Message, Section, Settings};
 use crate::ui::color as app_colors;
 use crate::ui::{corner_dots, crorecut_button, styles};
 use crate::video::FfmpegAvailability;
@@ -18,6 +18,10 @@ const INDICATOR_HEIGHT: f32 = 24.0;
 const INDICATOR_BUTTON_GAP: f32 = 1.0;
 const SIDEBAR_ROW_SPAN: f32 = SIDEBAR_BUTTON_HEIGHT + SIDEBAR_BUTTON_SPACING;
 const INDICATOR_Y_OFFSET: f32 = (SIDEBAR_BUTTON_HEIGHT - INDICATOR_HEIGHT) / 2.0;
+
+const GITHUB_URL: &str = "https://github.com/miredirex/crorecut";
+const ISSUES_URL: &str = "https://github.com/miredirex/crorecut/issues/new";
+const LICENSE_URL: &str = "https://github.com/miredirex/crorecut/blob/main/LICENSE";
 
 impl Settings {
     pub fn view(&self) -> impl Widget<Message> + '_ {
@@ -88,30 +92,43 @@ impl Settings {
     }
 
     fn about_view(&self) -> impl Widget<Message> + '_ {
-        let title = rich_text::<(), Message, _>(vec![
-            span("Crorecut").size(16).color(app_colors::TEXT),
-            span(format!(" v{}", env!("CARGO_PKG_VERSION")))
+        let header = column![
+            image::<image::Handle>(self.app_icon.clone())
+                .width(ABOUT_ICON_SIZE)
+                .height(ABOUT_ICON_SIZE),
+            space().height(6),
+            text("Crorecut").size(24).color(app_colors::TEXT),
+            text(format!("v{}", env!("CARGO_PKG_VERSION")))
                 .size(14)
-                .color(app_colors::TEXT_SECONDARY)
-                .font(Font::MONOSPACE),
-        ]);
+                .font(Font::MONOSPACE)
+                .color(app_colors::TEXT_SECONDARY),
+            space().height(6),
+            text("Minimalistic video editor powered by FFmpeg")
+                .size(14)
+                .color(app_colors::TEXT_SECONDARY),
+            space().height(4),
+            row![
+                link_button("GitHub", GITHUB_URL),
+                link_separator(),
+                link_button("Report an issue", ISSUES_URL),
+                link_separator(),
+                link_button("License", LICENSE_URL),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
+            space().height(12),
+            text(build_info())
+                .size(12)
+                .font(Font::MONOSPACE)
+                .color(app_colors::TEXT_SECONDARY),
+        ]
+        .spacing(4)
+        .align_x(Alignment::Center);
 
         column![
-            row![
-                image::<image::Handle>(self.window_icon.clone()),
-                column![
-                    title,
-                    button(text("View on GitHub").size(13))
-                        .on_press(Message::OpenGithub)
-                        .style(styles::text_link_button)
-                        .padding(0)
-                ]
-                .spacing(4)
-                .align_x(Alignment::Start),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center),
-            space().height(Length::Fill),
+            space().height(Length::FillPortion(1)),
+            header,
+            space().height(Length::FillPortion(2)),
             row![
                 text("Made with").size(13).color(app_colors::TEXT_SECONDARY),
                 iced_logo(16),
@@ -121,7 +138,7 @@ impl Settings {
         ]
         .width(Length::Fill)
         .height(Length::Fill)
-        .align_x(Alignment::Start)
+        .align_x(Alignment::Center)
     }
 
     fn indicator_y(&self) -> f32 {
@@ -178,6 +195,31 @@ fn sidebar_indicator() -> impl Widget<Message> {
             background: Some(Background::Color(app_colors::LIGHT_GRAY)),
             ..Default::default()
         })
+}
+
+fn link_button(label: &'static str, url: &'static str) -> impl Widget<Message> {
+    button(text(label).size(13))
+        .on_press(Message::OpenUrl(url))
+        .style(styles::text_link_button)
+        .padding(0)
+}
+
+fn link_separator() -> impl Widget<Message> {
+    text("·").size(13).color(app_colors::TEXT_SECONDARY)
+}
+
+/// e.g. "560227b · 7 Oct 2026 · windows-x86_64"
+fn build_info() -> String {
+    let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    [
+        option_env!("CRORECUT_GIT_HASH"),
+        option_env!("CRORECUT_GIT_DATE"),
+        Some(platform.as_str()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ")
 }
 
 fn ffmpeg_status(availability: &FfmpegAvailability) -> Span<'static> {

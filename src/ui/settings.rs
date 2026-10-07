@@ -9,6 +9,7 @@ use crate::video::FfmpegAvailability;
 pub use view::modal_overlay;
 
 const INDICATOR_ANIMATION_DURATION: Duration = Duration::from_millis(180);
+const ABOUT_ICON_SIZE: f32 = 56.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Section {
@@ -59,7 +60,7 @@ pub struct Settings {
     ffmpeg_path: String,
     /// `None` while detection is still running
     ffmpeg_availability: Option<FfmpegAvailability>,
-    window_icon: image::Handle,
+    app_icon: image::Handle,
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +70,7 @@ pub enum Message {
     DefaultDirectoryChanged(String),
     FfmpegPathChanged(String),
     FfmpegDetected(FfmpegAvailability),
-    OpenGithub,
+    OpenUrl(&'static str),
 }
 
 impl Settings {
@@ -82,7 +83,7 @@ impl Settings {
                 .unwrap_or_default(),
             ffmpeg_path: String::new(),
             ffmpeg_availability: None,
-            window_icon: image::Handle::from_bytes(crate::icons::WINDOW_ICON),
+            app_icon: about_icon(),
         };
 
         let detect_task = Task::perform(crate::video::detect_ffmpeg(), Message::FfmpegDetected);
@@ -128,9 +129,9 @@ impl Settings {
             Message::FfmpegDetected(availability) => {
                 self.ffmpeg_availability = Some(availability);
             }
-            Message::OpenGithub => {
-                if let Err(error) = open::that_detached("https://github.com/miredirex/crorecut") {
-                    log::error!("Failed to open GitHub repository: {error}");
+            Message::OpenUrl(url) => {
+                if let Err(error) = open::that_detached(url) {
+                    log::error!("Failed to open {url}: {error}");
                 }
             }
         }
@@ -145,4 +146,14 @@ impl Settings {
             .as_ref()
             .map_or(to, |animation| animation.current_index(to))
     }
+}
+
+fn about_icon() -> image::Handle {
+    let size = (ABOUT_ICON_SIZE * 2.0) as u32;
+    let icon = ::image::load_from_memory(crate::icons::APP_ICON_LARGE)
+        .unwrap()
+        .resize_exact(size, size, ::image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
+
+    image::Handle::from_rgba(size, size, icon.into_raw())
 }
