@@ -275,11 +275,16 @@ fn render_params_section(state: &Editor) -> impl Widget<Message> + '_ {
             if let Some(status) = &p.status {
                 status.clone()
             } else {
-                let mins = (p.out_time / 60.0) as u32;
-                let secs = (p.out_time % 60.0) as u32;
+                let output_duration = state.trim_end - state.trim_start;
+                let percent = if output_duration > 0.0 {
+                    (p.out_time / output_duration * 100.0).clamp(0.0, 100.0)
+                } else {
+                    0.0
+                };
+                // Fixed-width fields + monospace font keep the button from resizing on every update
                 format!(
-                    "frame {}, rendered {:02}:{:02} @ {:.2}x",
-                    p.frame, mins, secs, p.speed
+                    "{:>3.0}% / frame {:>5} / {:>5.2}x",
+                    percent, p.frame, p.speed
                 )
             }
         }),
@@ -288,6 +293,7 @@ fn render_params_section(state: &Editor) -> impl Widget<Message> + '_ {
             _ => Some(Message::RunCommand),
         },
     )
+    .sublabel_font(Font::MONOSPACE)
     .into_widget();
 
     row![

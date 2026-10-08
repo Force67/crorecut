@@ -1,7 +1,7 @@
 //! Styled ripple button with decorative corner dots and an optional icon
 
 use iced::widget::{button, column, container, row, stack, svg, text};
-use iced::{Alignment, Color, Length, Widget};
+use iced::{Alignment, Color, Font, Length, Widget};
 
 use super::color as app_colors;
 use super::{corner_dots, ripple};
@@ -28,6 +28,7 @@ pub struct CrorecutButton<Message> {
     icon: Option<&'static [u8]>,
     label: String,
     sublabel: Option<String>,
+    sublabel_font: Option<Font>,
     on_press: Option<Message>,
     width: Length,
 }
@@ -36,6 +37,12 @@ impl<Message> CrorecutButton<Message> {
     #[must_use]
     pub fn width(mut self, width: impl Into<Length>) -> Self {
         self.width = width.into();
+        self
+    }
+
+    #[must_use]
+    pub fn sublabel_font(mut self, font: Font) -> Self {
+        self.sublabel_font = Some(font);
         self
     }
 }
@@ -50,6 +57,7 @@ pub fn crorecut_button<Message>(
         icon,
         label,
         sublabel,
+        sublabel_font: None,
         on_press,
         width: Length::Fit,
     }
@@ -60,6 +68,14 @@ impl<Message> CrorecutButton<Message> {
     where
         Message: Clone + 'a,
     {
+        // With an icon, lock the height (28px icon + 12px padding on each side) so a sublabel
+        // doesn't grow the button. Text-only buttons keep their natural height.
+        let (height, vertical_padding) = if self.icon.is_some() {
+            (Length::Fixed(52.0), 0)
+        } else {
+            (Length::Fit, 12)
+        };
+
         let icon = self.icon.map(|icon_data| {
             svg(svg::Handle::from_memory(icon_data))
                 .width(28)
@@ -67,9 +83,19 @@ impl<Message> CrorecutButton<Message> {
         });
 
         let label = column![
-            text(self.label).color(app_colors::TEXT),
-            self.sublabel
-                .map(|sub| text(sub).size(13).color(app_colors::TEXT_SECONDARY)),
+            text(self.label)
+                .color(app_colors::TEXT)
+                .wrapping(text::Wrapping::None),
+            self.sublabel.map(|sub| {
+                let sub = text(sub)
+                    .size(13)
+                    .color(app_colors::TEXT_SECONDARY)
+                    .wrapping(text::Wrapping::None);
+                match self.sublabel_font {
+                    Some(font) => sub.font(font),
+                    None => sub,
+                }
+            }),
         ];
 
         let content = row![icon, label].spacing(12).align_y(Alignment::Center);
@@ -79,8 +105,8 @@ impl<Message> CrorecutButton<Message> {
         let btn = button(stack![
             container(content)
                 .center_x(self.width)
-                .center_y(Length::Fit)
-                .padding([12, 16]), // [vertical, horizontal]
+                .center_y(height)
+                .padding([vertical_padding, 16]),
             corner_dots(),
         ])
         .on_press_maybe(self.on_press)
