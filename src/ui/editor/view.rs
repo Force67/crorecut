@@ -74,6 +74,7 @@ impl Editor {
                 self.trim_start,
                 self.trim_end,
                 self.is_streaming,
+                !matches!(self.render_status, RenderStatus::Rendering),
             ),
             container(command_preview_field(self))
                 .padding([0, 20])
@@ -197,6 +198,7 @@ fn timeline(
     trim_start: f64,
     trim_end: f64,
     is_streaming: bool,
+    trim_enabled: bool,
 ) -> impl Widget<Message> {
     let (icon, msg) = if is_streaming {
         (crate::icons::PAUSE_SVG, Message::StopPlayback)
@@ -207,9 +209,9 @@ fn timeline(
     row![
         playback_button(icon, msg),
         if duration > 0.0 {
-            trim_timeline(0.0, duration, trim_start, trim_end, timestamp)
+            trim_timeline(0.0, duration, trim_start, trim_end, timestamp, trim_enabled)
         } else {
-            trim_timeline(0.0, 1.0, 0.0, 1.0, 0.0)
+            trim_timeline(0.0, 1.0, 0.0, 1.0, 0.0, false)
         },
         row![
             text(format_duration_mmss(timestamp))

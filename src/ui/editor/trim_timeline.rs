@@ -19,6 +19,8 @@ struct TrimTimeline {
     start_value: f64,
     end_value: f64,
     playhead: f64,
+    /// When false, the handles can't be dragged (scrubbing still works)
+    trim_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -84,7 +86,11 @@ impl TimelineGeometry {
         min + normalized.clamp(0.0, 1.0) * self.range
     }
 
-    fn drag_mode_at(self, x: f32) -> DragMode {
+    fn drag_mode_at(self, x: f32, trim_enabled: bool) -> DragMode {
+        if !trim_enabled {
+            return DragMode::Scrub;
+        }
+
         let start_dist = (x - self.start_x).abs();
         let end_dist = (x - self.end_x).abs();
 
@@ -139,7 +145,7 @@ impl canvas::Program<Message> for TrimTimeline {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 let cursor_x = cursor.position_in(bounds)?.x;
 
-                state.drag_mode = geometry.drag_mode_at(cursor_x);
+                state.drag_mode = geometry.drag_mode_at(cursor_x, self.trim_enabled);
                 Some(self.drag_action(state.drag_mode, geometry, cursor_x))
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
@@ -199,7 +205,7 @@ impl canvas::Program<Message> for TrimTimeline {
             return mouse::Interaction::default();
         };
 
-        match geometry.drag_mode_at(cursor_position.x) {
+        match geometry.drag_mode_at(cursor_position.x, self.trim_enabled) {
             DragMode::StartHandle | DragMode::EndHandle => mouse::Interaction::Grab,
             DragMode::Scrub => mouse::Interaction::Pointer,
             DragMode::None => mouse::Interaction::default(),
@@ -278,6 +284,7 @@ pub fn trim_timeline(
     start: f64,
     end: f64,
     playhead: f64,
+    trim_enabled: bool,
 ) -> impl Widget<Message> {
     iced::widget::canvas(TrimTimeline {
         min,
@@ -285,6 +292,7 @@ pub fn trim_timeline(
         start_value: start,
         end_value: end,
         playhead,
+        trim_enabled,
     })
     .width(Length::Fill)
     .height(Length::Fixed(TIMELINE_HEIGHT))

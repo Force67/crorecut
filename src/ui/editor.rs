@@ -390,6 +390,13 @@ impl Editor {
                 Task::none()
             }
 
+            // Trimming is locked while rendering (also covers a drag that started before the render)
+            Message::TrimStartChanged(_) | Message::TrimEndChanged(_)
+                if matches!(self.render_status, RenderStatus::Rendering) =>
+            {
+                Task::none()
+            }
+
             Message::TrimStartChanged(value) => {
                 self.trim_start = value.min(self.trim_end - 0.1).max(0.0);
                 self.regenerate_command_preview();
